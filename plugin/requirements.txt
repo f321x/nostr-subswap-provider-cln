@@ -1,0 +1,2 @@
+pyln-client>=24.8.1,<25.0.0
+electrum-aionostr
