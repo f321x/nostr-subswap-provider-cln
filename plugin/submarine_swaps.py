@@ -1,52 +1,52 @@
 import asyncio
 import json
 import os
-from typing import TYPE_CHECKING, Optional, Dict, Union, Sequence, Tuple, Iterable
+from typing import Optional, Dict, Sequence, Tuple, Iterable
 from decimal import Decimal
 import math
 import time
 
 import attr
+import aiohttp
 
-import electrum_ecc as ecc
 from electrum_ecc import ECPrivkey
 
-import aionostr
-from aionostr.util import to_nip19
+import electrum_aionostr as aionostr
+from electrum_aionostr.util import to_nip19
+
 from collections import defaultdict
 
 
-# from . import lnutil
-# from .crypto import sha256, hash_160
-# from .bitcoin import (script_to_p2wsh, opcodes,
-#                       construct_witness)
-# from .transaction import PartialTxInput, PartialTxOutput, PartialTransaction, Transaction, TxInput, TxOutpoint
-# from .transaction import script_GetOp, match_script_against_template, OPPushDataGeneric, OPPushDataPubkey
-# from .util import log_exceptions, BelowDustLimit, OldTaskGroup
-# from .lnutil import REDEEM_AFTER_DOUBLE_SPENT_DELAY
-# from .bitcoin import dust_threshold, DummyAddress
+from . import lnutil
+from .crypto import sha256
+from .bitcoin import (script_to_p2wsh, opcodes,
+                          construct_witness, construct_script)
+from .transaction import PartialTxInput, PartialTxOutput, PartialTransaction, Transaction, TxInput, TxOutpoint
+from .transaction import script_GetOp, match_script_against_template, OPPushDataGeneric, OPPushDataPubkey
+from .util import log_exceptions, BelowDustLimit, OldTaskGroup
+from .lnutil import REDEEM_AFTER_DOUBLE_SPENT_DELAY
+from .bitcoin import dust_threshold, DummyAddress
 # from .logging import Logger
-# from .lnutil import hex_to_bytes
-# from .lnaddr import lndecode
+from .lnutil import hex_to_bytes
+from .lnaddr import lndecode
 # from .json_db import StoredObject, stored_in
-# from . import constants
+from . import constants
 # from .address_synchronizer import TX_HEIGHT_LOCAL
 # from .i18n import _
 
-# from .bitcoin import construct_script
-# from .crypto import ripemd
-# from .invoices import Invoice
+from .crypto import ripemd
+from .invoices import Invoice
 # from .network import TxBroadcastError
 # from .lnonion import OnionRoutingFailure, OnionFailureCode
 
 
-if TYPE_CHECKING:
-    from .network import Network
-    from .wallet import Abstract_Wallet
-    from .lnwatcher import LNWalletWatcher
-    from .lnworker import LNWallet
-    from .lnchannel import Channel
-    from .simple_config import SimpleConfig
+# if TYPE_CHECKING:
+#     from .network import Network
+#     from .wallet import Abstract_Wallet
+#     from .lnwatcher import LNWalletWatcher
+#     from .lnworker import LNWallet
+#     from .lnchannel import Channel
+#     from .simple_config import SimpleConfig
 
 
 
@@ -117,7 +117,7 @@ def check_reverse_redeem_script(
 
 class SwapServerError(Exception):
     def __str__(self):
-        return _("The swap server errored or is unreachable.")
+        return "The swap server errored or is unreachable."
 
 def now():
     return int(time.time())
@@ -1195,12 +1195,12 @@ class SwapManager(Logger):
             else:
                 group_label = 'Forward swap' + ' ' + self.config.format_amount_and_units(swap.onchain_amount)
 
-            label = _('Claim transaction') if swap.is_reverse else _('Funding transaction')
+            label = 'Claim transaction' if swap.is_reverse else 'Funding transaction'
             delta = current_height - swap.locktime
             if self.wallet.adb.is_mine(swap.lockup_address):
                 tx_height = self.wallet.adb.get_tx_height(swap.funding_txid)
                 if swap.is_reverse and tx_height.height <= 0:
-                    label += ' (%s)' % _('waiting for funding tx confirmation')
+                    label += ' (%s)' % 'waiting for funding tx confirmation'
                 if not swap.is_reverse and not swap.is_redeemed and swap.spending_txid is None and delta < 0:
                     label += f' (refundable in {-delta} blocks)' # fixme: only if unspent
             d[txid] = {
@@ -1217,7 +1217,7 @@ class SwapManager(Logger):
                     'group_id': txid,
                     'amount_msat': 0, # must be zero for onchain tx
                     'type': 'swap',
-                    'label': _('Refund transaction'),
+                    'label': 'Refund transaction',
                 }
         return d
 
@@ -1232,51 +1232,51 @@ class SwapManager(Logger):
 
 
 
-# class HttpTransport(Logger):
+class HttpTransport(Logger):
 
-#     def __init__(self, config, sm):
-#         Logger.__init__(self)
-#         self.sm = sm
-#         self.network = sm.network
-#         self.api_url = config.SWAPSERVER_URL
-#         self.config = config
-#         self.is_connected = asyncio.Event()
-#         self.is_connected.set()
+    def __init__(self, config, sm):
+        Logger.__init__(self)
+        self.sm = sm
+        self.network = sm.network
+        self.api_url = config.SWAPSERVER_URL
+        self.config = config
+        self.is_connected = asyncio.Event()
+        self.is_connected.set()
 
-#     def __enter__(self):
-#         asyncio.run_coroutine_threadsafe(self.get_pairs(), self.network.asyncio_loop)
-#         return self
+    def __enter__(self):
+        asyncio.run_coroutine_threadsafe(self.get_pairs(), self.network.asyncio_loop)
+        return self
 
-#     def __exit__(self, ex_type, ex, tb):
-#         pass
+    def __exit__(self, ex_type, ex, tb):
+        pass
 
-#     async def send_request_to_server(self, method, request_data):
-#         response = await self.network.async_send_http_on_proxy(
-#             'post' if request_data else 'get',
-#             self.api_url + '/' + method,
-#             json=request_data,
-#             timeout=30)
-#         return json.loads(response)
+    async def send_request_to_server(self, method, request_data):
+        response = await self.network.async_send_http_on_proxy(
+            'post' if request_data else 'get',
+            self.api_url + '/' + method,
+            json=request_data,
+            timeout=30)
+        return json.loads(response)
 
-#     async def get_pairs(self) -> None:
-#         """Might raise SwapServerError."""
-#         try:
-#             response = await self.send_request_to_server('getpairs', None)
-#         except aiohttp.ClientError as e:
-#             self.logger.error(f"Swap server errored: {e!r}")
-#             raise SwapServerError() from e
-#         assert response.get('htlcFirst') is True
-#         fees = response['pairs']['BTC/BTC']['fees']
-#         limits = response['pairs']['BTC/BTC']['limits']
-#         pairs = SwapFees(
-#             percentage = fees['percentage'],
-#             normal_fee = fees['minerFees']['baseAsset']['normal'],
-#             lockup_fee = fees['minerFees']['baseAsset']['reverse']['lockup'],
-#             claim_fee = fees['minerFees']['baseAsset']['reverse']['claim'],
-#             min_amount = limits['minimal'],
-#             max_amount = limits['maximal'],
-#         )
-#         self.sm.update_pairs(pairs)
+    async def get_pairs(self) -> None:
+        """Might raise SwapServerError."""
+        try:
+            response = await self.send_request_to_server('getpairs', None)
+        except aiohttp.ClientError as e:
+            self.logger.error(f"Swap server errored: {e!r}")
+            raise SwapServerError() from e
+        assert response.get('htlcFirst') is True
+        fees = response['pairs']['BTC/BTC']['fees']
+        limits = response['pairs']['BTC/BTC']['limits']
+        pairs = SwapFees(
+            percentage = fees['percentage'],
+            normal_fee = fees['minerFees']['baseAsset']['normal'],
+            lockup_fee = fees['minerFees']['baseAsset']['reverse']['lockup'],
+            claim_fee = fees['minerFees']['baseAsset']['reverse']['claim'],
+            min_amount = limits['minimal'],
+            max_amount = limits['maximal'],
+        )
+        self.sm.update_pairs(pairs)
 
 
 
@@ -1326,7 +1326,7 @@ class NostrTransport(Logger):
         else:
             tasks = [
                 self.check_direct_messages(),
-                #self.receive_offers(),
+                self.receive_offers(),
                 self.get_pairs(),
             ]
         try:
@@ -1340,6 +1340,7 @@ class NostrTransport(Logger):
 
     async def stop(self):
         self.logger.info("shutting down nostr transport")
+        self.sm.is_initialized.clear()
         await self.taskgroup.cancel_remaining()
         await self.relay_manager.close()
 
@@ -1402,6 +1403,7 @@ class NostrTransport(Logger):
         return response
 
     async def receive_offers(self):
+        await self.is_connected.wait()
         query = {"kinds": [self.NOSTR_SWAP_OFFER], "limit":10}
         async for event in self.relay_manager.get_events(query, single_event=False, only_stored=False):
             try:
@@ -1412,7 +1414,6 @@ class NostrTransport(Logger):
                 continue
             if content.get('network') != constants.net.NET_NAME:
                 continue
-            print(content)
             # check if this is the most recent event for this pubkey
             pubkey = event.pubkey
             ts = self.offers.get(pubkey, {}).get('timestamp', 0)
@@ -1422,17 +1423,12 @@ class NostrTransport(Logger):
             content['pubkey'] = pubkey
             content['timestamp'] = event.created_at
             self.offers[pubkey] = content
-            #print('received event', pubkey[0:10], event.id)
             # mirror event to other relays
             #await man.add_event(event, check_response=False)
-            # update fees if this is our server
-            if event.pubkey == self.config.SWAPSERVER_NPUB:
-                self.logger.info(f'received offer {event.id}')
-                pairs = self._parse_offer(content)
-                self.sm.update_pairs(pairs)
-                self.server_relays = content['relays'].split(',')
 
     async def get_pairs(self):
+        if self.config.SWAPSERVER_NPUB is None:
+            return
         query = {"kinds": [self.NOSTR_SWAP_OFFER], "authors": [self.config.SWAPSERVER_NPUB], "limit":1}
         async for event in self.relay_manager.get_events(query, single_event=False, only_stored=False):
             try:
@@ -1443,7 +1439,6 @@ class NostrTransport(Logger):
                 continue
             if content.get('network') != constants.net.NET_NAME:
                 continue
-            print(content)
             # check if this is the most recent event for this pubkey
             pubkey = event.pubkey
             content['pubkey'] = pubkey
@@ -1492,4 +1487,3 @@ class NostrTransport(Logger):
         r['reply_to'] = event_id
         self.logger.info(f'sending response id={event_id}')
         await self.send_direct_message(event_pubkey, relays, json.dumps(r))
-
