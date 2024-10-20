@@ -455,22 +455,22 @@ REDEEM_AFTER_DOUBLE_SPENT_DELAY = 30
 #
 # # the minimum cltv_expiry accepted for newly received HTLCs
 # # note: when changing, consider Blockchain.is_tip_stale()
-# MIN_FINAL_CLTV_DELTA_ACCEPTED = 144
+MIN_FINAL_CLTV_DELTA_ACCEPTED = 144
 # # set it a tiny bit higher for invoices as blocks could get mined
 # # during forward path of payment
-# MIN_FINAL_CLTV_DELTA_FOR_INVOICE = MIN_FINAL_CLTV_DELTA_ACCEPTED + 3
+MIN_FINAL_CLTV_DELTA_FOR_INVOICE = MIN_FINAL_CLTV_DELTA_ACCEPTED + 3
 #
 # # the deadline for offered HTLCs:
 # # the deadline after which the channel has to be failed and timed out on-chain
-# NBLOCK_DEADLINE_DELTA_AFTER_EXPIRY_FOR_OFFERED_HTLCS = 1
+NBLOCK_DEADLINE_DELTA_AFTER_EXPIRY_FOR_OFFERED_HTLCS = 1
 #
 # # the deadline for received HTLCs this node has fulfilled:
 # # the deadline after which the channel has to be failed and the HTLC fulfilled on-chain before its cltv_expiry
-# NBLOCK_DEADLINE_DELTA_BEFORE_EXPIRY_FOR_RECEIVED_HTLCS = 72
+NBLOCK_DEADLINE_DELTA_BEFORE_EXPIRY_FOR_RECEIVED_HTLCS = 72
 #
-# NBLOCK_CLTV_DELTA_TOO_FAR_INTO_FUTURE = 28 * 144
+NBLOCK_CLTV_DELTA_TOO_FAR_INTO_FUTURE = 28 * 144
 #
-# MAXIMUM_REMOTE_TO_SELF_DELAY_ACCEPTED = 2016
+MAXIMUM_REMOTE_TO_SELF_DELAY_ACCEPTED = 2016
 #
 # class RevocationStore:
 #     # closely based on code in lightningnetwork/lnd
