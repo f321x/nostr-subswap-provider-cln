@@ -177,7 +177,8 @@ class SwapManager:
     # network: Optional['Network'] = None
     # lnwatcher: Optional['LNWalletWatcher'] = None
 
-    def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning', db: 'JsonDB', plugin_config: 'PluginConfig'):
+    def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning',
+                 db: 'JsonDB', plugin_config: 'PluginConfig'):
         self.logger = Logger(__name__)
         self.normal_fee = None
         self.lockup_fee = None

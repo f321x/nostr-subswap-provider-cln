@@ -1,8 +1,13 @@
+from .cln_plugin import CLNPlugin
 from .plugin_config import PluginConfig
 from .transaction import PartialTxOutput, PartialTransaction, Transaction
 
+# from pyln.client import Plugin
+
+
 class CLNChainWallet:
-    def __init__(self):
+    def __init__(self, plugin: CLNPlugin):
+        self.plugin = plugin
         pass
 
     def create_transaction(self, *, outputs: [PartialTxOutput], rbf: bool) -> PartialTransaction:
