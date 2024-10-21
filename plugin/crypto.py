@@ -131,8 +131,8 @@ from .util import assert_bytes, InvalidPassword, to_bytes, to_string, WalletFile
 #         if i != padlen:
 #             raise InvalidPadding("invalid padding byte (inconsistent)")
 #     return data[0:-padlen]
-#
-#
+
+
 # def aes_encrypt_with_iv(key: bytes, iv: bytes, data: bytes) -> bytes:
 #     assert_bytes(key, iv, data)
 #     data = append_PKCS7_padding(data)
@@ -149,8 +149,8 @@ from .util import assert_bytes, InvalidPassword, to_bytes, to_string, WalletFile
 #     else:
 #         raise Exception("no AES backend found")
 #     return e
-#
-#
+
+
 # def aes_decrypt_with_iv(key: bytes, iv: bytes, data: bytes) -> bytes:
 #     assert_bytes(key, iv, data)
 #     if HAS_CRYPTODOME:
