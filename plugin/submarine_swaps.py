@@ -32,7 +32,7 @@ from .json_db import StoredObject, stored_in, JsonDB
 from . import constants
 from .cln_chain import CLNChainWallet, TxBroadcastError
 from .cln_lightning import CLNLightning
-from .simple_config import Config, Keypair, OnlyPubkeyKeypair
+from .plugin_config import PluginConfig, Keypair, OnlyPubkeyKeypair
 # from .address_synchronizer import TX_HEIGHT_LOCAL
 # from .i18n import _
 
@@ -47,7 +47,7 @@ from .invoices import Invoice
 #     from .lnwatcher import LNWalletWatcher
 #     from .lnworker import LNWallet
 #     from .lnchannel import Channel
-#     from .simple_config import SimpleConfig
+#     from .plugin_config import SimpleConfig
 
 
 
@@ -180,7 +180,7 @@ class SwapManager:
     # network: Optional['Network'] = None
     # lnwatcher: Optional['LNWalletWatcher'] = None
 
-    def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning', db: 'JsonDB', simple_config: 'Config'):
+    def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning', db: 'JsonDB', plugin_config: 'PluginConfig'):
         self.logger = Logger(__name__)
         self.normal_fee = None
         self.lockup_fee = None
@@ -193,9 +193,8 @@ class SwapManager:
         self.lnworker = lnworker
         self.db = db
         self.dummy_address = DummyAddress.SWAP
-        self.config = simple_config
-#         self.config = wallet.config
-#         self.taskgroup = OldTaskGroup()
+        self.config = plugin_config
+        self.taskgroup = OldTaskGroup()
 
         self.swaps = self.db.get_dict('submarine_swaps')  # type: Dict[str, SwapData]
         self._swaps_by_funding_outpoint = {}  # type: Dict[TxOutpoint, SwapData]
@@ -231,16 +230,16 @@ class SwapManager:
 #
     # @log_exceptions
     async def run_nostr_server(self):
-        with NostrTransport(self.config, self) as transport:
-            # self.logger.info(f'starting nostr transport with pubkey: {transport.nostr_pubkey}')
-            # self.logger.info(f'nostr relays: {transport.relays}')
-            # await transport.is_connected.wait()
-            # self.logger.info(f'nostr is connected')
-            # while True:
-            #     # todo: publish everytime fees have changed
-            #     self.server_update_pairs()
-            #     await transport.publish_offer(self)
-            #     await asyncio.sleep(600)
+        with NostrTransport(config=self.config, sm=self) as transport:
+            self.logger.info(f'starting nostr transport with pubkey: {transport.nostr_pubkey}')
+            self.logger.info(f'nostr relays: {transport.relays}')
+            await transport.is_connected.wait()
+            self.logger.info(f'nostr is connected')
+            while True:
+                # todo: publish everytime fees have changed
+                self.server_update_pairs()
+                await transport.publish_offer(self)
+                # await asyncio.sleep(600)
 
 #     @log_exceptions
 #     async def main_loop(self):
@@ -435,15 +434,15 @@ class SwapManager:
 #
 #     def get_claim_fee(self):
 #         return self.get_fee(CLAIM_FEE_SIZE)
-#
-#     def get_fee(self, size):
-#         # note: 'size' is in vbytes
-#         return self._get_fee(size=size, config=self.wallet.config)
-#
-#     @classmethod
-#     def _get_fee(cls, *, size, config: 'SimpleConfig'):
-#         return config.estimate_fee(size, allow_fallback_to_static_rates=True)
-#
+
+    def get_fee(self, *, size_vb: int) -> int:
+        # note: 'size' is in vbytes
+        return self.wallet.get_chain_fee(size_vbyte=size_vb, config=self.config)
+
+    # @classmethod
+    # def _get_fee(cls, *, size, config: 'PluginConfig'):
+    #     return config.estimate_fee(size, allow_fallback_to_static_rates=True)
+
 #     def get_swap(self, payment_hash: bytes) -> Optional[SwapData]:
 #         # for history
 #         swap = self.swaps.get(payment_hash.hex())
@@ -918,15 +917,15 @@ class SwapManager:
             self._swaps_by_funding_outpoint[swap._funding_prevout] = swap
         self._swaps_by_lockup_address[swap.lockup_address] = swap
 
-#     def server_update_pairs(self) -> None:
-#         """ for server """
-#         self.percentage = float(self.config.SWAPSERVER_FEE_MILLIONTHS) / 10000
-#         self._min_amount = 20000
-#         self._max_amount = 10000000
-#         self.normal_fee = self.get_fee(CLAIM_FEE_SIZE)
-#         self.lockup_fee = self.get_fee(LOCKUP_FEE_SIZE)
-#         self.claim_fee = self.get_fee(CLAIM_FEE_SIZE)
-#
+    def server_update_pairs(self) -> None:
+        """ for server """
+        self.percentage = float(self.config.swapserver_fee_millionths) / 10000
+        self._min_amount = 20000
+        self._max_amount = 10000000
+        self.normal_fee = self.get_fee(size_vb=CLAIM_FEE_SIZE)
+        self.lockup_fee = self.get_fee(size_vb=LOCKUP_FEE_SIZE)
+        self.claim_fee = self.get_fee(size_vb=CLAIM_FEE_SIZE)
+
 #     def update_pairs(self, pairs):
 #         self.logger.info(f'updating fees {pairs}')
 #         self.normal_fee = pairs.normal_fee
@@ -1279,9 +1278,9 @@ class SwapManager:
 #             max_amount = limits['maximal'],
 #         )
 #         self.sm.update_pairs(pairs)
-#
-#
-#
+
+
+
 class NostrTransport:  # (Logger):
     # uses nostr:
     #  - to advertise servers
@@ -1306,48 +1305,49 @@ class NostrTransport:  # (Logger):
         self.nostr_pubkey = keypair.pubkey.hex()[2:]
         self.dm_replies = defaultdict(asyncio.Future)  # type: Dict[bytes, asyncio.Future]
         self.relay_manager = aionostr.Manager(self.relays, private_key=self.nostr_private_key)
-        # self.taskgroup = OldTaskGroup()
+        self.taskgroup = OldTaskGroup()
         self.is_connected = asyncio.Event()
         # self.server_relays = None
 
-    # def __enter__(self):
-    #     asyncio.run_coroutine_threadsafe(self.main_loop(), self.network.asyncio_loop)
-    #     return self
-#
-#     def __exit__(self, ex_type, ex, tb):
-#         asyncio.run_coroutine_threadsafe(self.stop(), self.network.asyncio_loop)
-#
+    def __enter__(self):
+        asyncio.create_task(self.main_loop())  # , self.network.asyncio_loop)
+        return self
+
+    def __exit__(self, ex_type, ex, tb):
+        asyncio.create_task(self.stop())  # , self.network.asyncio_loop)
+
 #     @log_exceptions
-#     async def main_loop(self):
-#         self.logger.info(f'starting nostr transport with pubkey: {self.nostr_pubkey}')
-#         self.logger.info(f'nostr relays: {self.relays}')
-#         await self.relay_manager.connect()
-#         self.is_connected.set()
-#         if self.sm.is_server:
-#             tasks = [
-#                 self.check_direct_messages(),
-#             ]
-#         else:
-#             tasks = [
-#                 self.check_direct_messages(),
-#                 self.receive_offers(),
-#                 self.get_pairs(),
-#             ]
-#         try:
-#             async with self.taskgroup as group:
-#                 for task in tasks:
-#                     await group.spawn(task)
-#         except Exception as e:
-#             self.logger.exception("taskgroup died.")
-#         finally:
-#             self.logger.info("taskgroup stopped.")
-#
-#     async def stop(self):
-#         self.logger.info("shutting down nostr transport")
-#         self.sm.is_initialized.clear()
-#         await self.taskgroup.cancel_remaining()
-#         await self.relay_manager.close()
-#
+    async def main_loop(self):
+        self.logger.info(f'starting nostr transport with pubkey: {self.nostr_pubkey}')
+        self.logger.info(f'nostr relays: {self.relays}')
+        await self.relay_manager.connect()
+        self.is_connected.set()
+        if self.sm.is_server:
+            tasks = [
+                self.check_direct_messages(),
+            ]
+        else:
+            tasks = [
+                # self.check_direct_messages(),
+                # self.receive_offers(),
+                # self.get_pairs(),
+            ]
+            raise Exception('This is a CLN plugin and should always run as server (for now)')
+        try:
+            async with self.taskgroup as group:
+                for task in tasks:
+                    await group.spawn(task)
+        except Exception as e:
+            self.logger.error("taskgroup died.")
+        finally:
+            self.logger.info("taskgroup stopped.")
+
+    async def stop(self):
+        self.logger.info("shutting down nostr transport")
+        self.sm.is_initialized.clear()
+        await self.taskgroup.cancel_remaining()
+        await self.relay_manager.close()
+
 #     @property
 #     def relays(self):
 #         return self.network.config.NOSTR_RELAYS.split(',')
@@ -1367,36 +1367,27 @@ class NostrTransport:  # (Logger):
 #         )
 #
 #     @log_exceptions
-#     async def publish_offer(self, sm):
-#         assert self.sm.is_server
-#         offer = {
-#             "type": "electrum-swap",
-#             "version": self.NOSTR_EVENT_VERSION,
-#             'network': constants.net.NET_NAME,
-#             'percentage_fee': sm.percentage,
-#             'normal_mining_fee': sm.normal_fee,
-#             'reverse_mining_fee': sm.lockup_fee,
-#             'claim_mining_fee': sm.claim_fee,
-#             'min_amount': sm._min_amount,
-#             'max_amount': sm._max_amount,
-#             'relays': sm.config.NOSTR_RELAYS,
-#         }
-#         self.logger.info(f'publishing swap offer..')
-#         event_id = await aionostr._add_event(
-#             self.relay_manager,
-#             kind=self.NOSTR_SWAP_OFFER,
-#             content=json.dumps(offer),
-#             private_key=self.nostr_private_key)
-#
-#     async def send_direct_message(self, pubkey: str, relays, content: str) -> str:
-#         event_id = await aionostr._add_event(
-#             self.relay_manager,
-#             kind=self.NOSTR_DM,
-#             content=content,
-#             private_key=self.nostr_private_key,
-#             direct_message=pubkey)
-#         return event_id
-#
+    async def publish_offer(self, sm):
+        assert self.sm.is_server
+        offer = {
+            "type": "electrum-swap",
+            "version": self.NOSTR_EVENT_VERSION,
+            'network': constants.net.NET_NAME,
+            'percentage_fee': sm.percentage,
+            'normal_mining_fee': sm.normal_fee,
+            'reverse_mining_fee': sm.lockup_fee,
+            'claim_mining_fee': sm.claim_fee,
+            'min_amount': sm._min_amount,
+            'max_amount': sm._max_amount,
+            'relays': sm.config.NOSTR_RELAYS,
+        }
+        self.logger.info(f'publishing swap offer..')
+        event_id = await aionostr._add_event(
+            self.relay_manager,
+            kind=self.NOSTR_SWAP_OFFER,
+            content=json.dumps(offer),
+            private_key=self.nostr_private_key)
+
 #     @log_exceptions
 #     async def send_request_to_server(self, method: str, request: dict) -> dict:
 #         request['method'] = method
@@ -1453,25 +1444,25 @@ class NostrTransport:  # (Logger):
 #             self.server_relays = content['relays'].split(',')
 #
 #     @log_exceptions
-#     async def check_direct_messages(self):
-#         privkey = aionostr.key.PrivateKey(self.private_key)
-#         query = {"kinds": [self.NOSTR_DM], "limit":0, "#p": [self.nostr_pubkey]}
-#         async for event in self.relay_manager.get_events(query, single_event=False, only_stored=False):
-#             try:
-#                 content = privkey.decrypt_message(event.content, event.pubkey)
-#                 content = json.loads(content)
-#             except Exception:
-#                 continue
-#             content['event_id'] = event.id
-#             content['event_pubkey'] = event.pubkey
-#             if 'reply_to' in content:
-#                 self.dm_replies[content['reply_to']].set_result(content)
-#             elif self.sm.is_server and 'method' in content:
-#                 await self.handle_request(content)
-#             else:
-#                 print('unknown message', content)
+    async def check_direct_messages(self):
+        privkey = aionostr.key.PrivateKey(self.private_key)
+        query = {"kinds": [self.NOSTR_DM], "limit":0, "#p": [self.nostr_pubkey]}
+        async for event in self.relay_manager.get_events(query, single_event=False, only_stored=False):
+            try:
+                content = privkey.decrypt_message(event.content, event.pubkey)
+                content = json.loads(content)
+            except Exception:
+                continue
+            content['event_id'] = event.id
+            content['event_pubkey'] = event.pubkey
+            if 'reply_to' in content:
+                self.dm_replies[content['reply_to']].set_result(content)
+            elif self.sm.is_server and 'method' in content:
+                await self.handle_request(content)
+            else:
+                print('unknown message', content)
 
-    @log_exceptions
+    # @log_exceptions
     async def handle_request(self, request):
         assert self.sm.is_server
         # todo: remember event_id of already processed requests
@@ -1479,7 +1470,7 @@ class NostrTransport:  # (Logger):
         event_id = request.pop('event_id')
         event_pubkey = request.pop('event_pubkey')
         print(f'handle_request: id={event_id} {method} {request}')
-        relays = request.pop('relays').split(',')
+        # relays = request.pop('relays').split(',')
         if method == 'addswapinvoice':
             r = self.sm.server_add_swap_invoice(request)
         elif method == 'createswap':
@@ -1490,4 +1481,15 @@ class NostrTransport:  # (Logger):
             raise Exception(method)
         r['reply_to'] = event_id
         self.logger.info(f'sending response id={event_id}')
-        await self.send_direct_message(event_pubkey, relays, json.dumps(r))
+        await self.send_direct_message(event_pubkey, json.dumps(r))
+
+
+    async def send_direct_message(self, pubkey: str, content: str) -> str:
+        event_id = await aionostr._add_event(
+            self.relay_manager,
+            kind=self.NOSTR_DM,
+            content=content,
+            private_key=self.nostr_private_key,
+            direct_message=pubkey)
+        return event_id
+

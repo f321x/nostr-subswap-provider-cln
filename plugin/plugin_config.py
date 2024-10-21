@@ -5,11 +5,13 @@ from typing import Optional
 from electrum_aionostr import Relay
 
 
-class Config:
+class PluginConfig:
     """Simple configuration class for swap server, without electrum specific code"""
     def __init__(self):
         self.nostr_keypair: Optional[Keypair] = None
         self.nostr_relays: Optional[Relay] = None
+        self.swapserver_fee_millionths = None
+        self.confirmation_speed_target_blocks = None
         pass
 
     def load_from_env(self):
