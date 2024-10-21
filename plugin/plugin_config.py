@@ -15,7 +15,7 @@ class PluginConfig:
         pass
 
     def load_from_env(self) -> 'PluginConfig':
-        """Load configuration from .env file or environment variables"""
+        """todo: Load configuration from .env file or environment variables"""
         return self
 
 
