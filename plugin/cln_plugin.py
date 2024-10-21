@@ -1,5 +1,8 @@
-from plugin.main import plugin
+from pyln.client import Plugin
 
 class CLNPlugin:
     def __init__(self):
-        plugin.run()
+        self.plugin = Plugin()
+        # register methods in between
+        self.plugin.run()
+

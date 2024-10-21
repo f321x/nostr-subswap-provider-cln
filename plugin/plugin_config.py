@@ -14,9 +14,9 @@ class PluginConfig:
         self.confirmation_speed_target_blocks = None
         pass
 
-    def load_from_env(self):
+    def load_from_env(self) -> 'PluginConfig':
         """Load configuration from .env file or environment variables"""
-        pass
+        return self
 
 
 @attr.s
