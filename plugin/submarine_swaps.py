@@ -32,6 +32,7 @@ from .json_db import StoredObject, stored_in, JsonDB
 from . import constants
 from .cln_chain import CLNChainWallet, TxBroadcastError
 from .cln_lightning import CLNLightning
+from .simple_config import Config, Keypair, OnlyPubkeyKeypair
 # from .address_synchronizer import TX_HEIGHT_LOCAL
 # from .i18n import _
 
@@ -179,11 +180,11 @@ class SwapManager:
     # network: Optional['Network'] = None
     # lnwatcher: Optional['LNWalletWatcher'] = None
 
-    def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning', db: 'JsonDB'):
+    def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning', db: 'JsonDB', simple_config: 'Config'):
         self.logger = Logger(__name__)
         self.normal_fee = None
         self.lockup_fee = None
-        self.claim_fee = None # part of the boltz prococol, not used by Electrum
+        self.claim_fee = None  # part of the boltz prococol, not used by Electrum
         self.percentage = None
         self._min_amount = None
         self._max_amount = None
@@ -192,7 +193,7 @@ class SwapManager:
         self.lnworker = lnworker
         self.db = db
         self.dummy_address = DummyAddress.SWAP
-        # self.config = wallet.config
+        self.config = simple_config
 #         self.config = wallet.config
 #         self.taskgroup = OldTaskGroup()
 
@@ -228,19 +229,19 @@ class SwapManager:
 #             self.add_lnwatcher_callback(swap)
 #         asyncio.run_coroutine_threadsafe(self.main_loop(), self.network.asyncio_loop)
 #
-#     @log_exceptions
-#     async def run_nostr_server(self):
-#         with NostrTransport(self.config, self, self.lnworker.nostr_keypair) as transport:
-#             self.logger.info(f'starting nostr transport with pubkey: {transport.nostr_pubkey}')
-#             self.logger.info(f'nostr relays: {transport.relays}')
-#             await transport.is_connected.wait()
-#             self.logger.info(f'nostr is connected')
-#             while True:
-#                 # todo: publish everytime fees have changed
-#                 self.server_update_pairs()
-#                 await transport.publish_offer(self)
-#                 await asyncio.sleep(600)
-#
+    # @log_exceptions
+    async def run_nostr_server(self):
+        with NostrTransport(self.config, self) as transport:
+            # self.logger.info(f'starting nostr transport with pubkey: {transport.nostr_pubkey}')
+            # self.logger.info(f'nostr relays: {transport.relays}')
+            # await transport.is_connected.wait()
+            # self.logger.info(f'nostr is connected')
+            # while True:
+            #     # todo: publish everytime fees have changed
+            #     self.server_update_pairs()
+            #     await transport.publish_offer(self)
+            #     await asyncio.sleep(600)
+
 #     @log_exceptions
 #     async def main_loop(self):
 #         tasks = [self.pay_pending_invoices()]
@@ -1281,35 +1282,37 @@ class SwapManager:
 #
 #
 #
-# class NostrTransport(Logger):
-#     # uses nostr:
-#     #  - to advertise servers
-#     #  - for client-server RPCs (using DMs)
-#     #     (todo: we should use onion messages for that)
-#
-#     NOSTR_DM = 4
-#     NOSTR_SWAP_OFFER = 10943
-#     NOSTR_EVENT_TIMEOUT = 60*60*24
-#     NOSTR_EVENT_VERSION = 1
-#
-#     def __init__(self, config, sm, keypair):
-#         Logger.__init__(self)
-#         self.config = config
-#         self.network = sm.network
-#         self.sm = sm
-#         self.offers = {}
-#         self.private_key = keypair.privkey
-#         self.nostr_private_key = to_nip19('nsec', keypair.privkey.hex())
-#         self.nostr_pubkey = keypair.pubkey.hex()[2:]
-#         self.dm_replies = defaultdict(asyncio.Future)  # type: Dict[bytes, asyncio.Future]
-#         self.relay_manager = aionostr.Manager(self.relays, private_key=self.nostr_private_key)
-#         self.taskgroup = OldTaskGroup()
-#         self.is_connected = asyncio.Event()
-#         self.server_relays = None
-#
-#     def __enter__(self):
-#         asyncio.run_coroutine_threadsafe(self.main_loop(), self.network.asyncio_loop)
-#         return self
+class NostrTransport:  # (Logger):
+    # uses nostr:
+    #  - to advertise servers
+    #  - for client-server RPCs (using DMs)
+    #     (todo: we should use onion messages for that)
+
+    NOSTR_DM = 4
+    NOSTR_SWAP_OFFER = 10943
+    NOSTR_EVENT_TIMEOUT = 60*60*24
+    NOSTR_EVENT_VERSION = 1
+
+    def __init__(self, *, config, sm):
+        self.logger = Logger("NostrTransport")
+        self.config = config
+        # self.network = sm.network
+        self.relays = config.nostr_relays
+        self.sm = sm
+        self.offers = {}
+        keypair = config.nostr_keypair
+        self.private_key = keypair.privkey
+        self.nostr_private_key = to_nip19('nsec', keypair.privkey.hex())
+        self.nostr_pubkey = keypair.pubkey.hex()[2:]
+        self.dm_replies = defaultdict(asyncio.Future)  # type: Dict[bytes, asyncio.Future]
+        self.relay_manager = aionostr.Manager(self.relays, private_key=self.nostr_private_key)
+        # self.taskgroup = OldTaskGroup()
+        self.is_connected = asyncio.Event()
+        # self.server_relays = None
+
+    # def __enter__(self):
+    #     asyncio.run_coroutine_threadsafe(self.main_loop(), self.network.asyncio_loop)
+    #     return self
 #
 #     def __exit__(self, ex_type, ex, tb):
 #         asyncio.run_coroutine_threadsafe(self.stop(), self.network.asyncio_loop)
