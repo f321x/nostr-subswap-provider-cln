@@ -22,7 +22,7 @@ from .bitcoin import (script_to_p2wsh, opcodes,
                           construct_witness, construct_script)
 from .transaction import PartialTxInput, PartialTxOutput, PartialTransaction, Transaction, TxInput, TxOutpoint
 from .transaction import script_GetOp, match_script_against_template, OPPushDataGeneric, OPPushDataPubkey
-from .util import log_exceptions, BelowDustLimit, OldTaskGroup
+from .util import log_exceptions, BelowDustLimit, OldTaskGroup, now
 from .lnutil import REDEEM_AFTER_DOUBLE_SPENT_DELAY
 from .bitcoin import dust_threshold, DummyAddress
 from .simple_logger import Logger
@@ -119,10 +119,7 @@ WITNESS_TEMPLATE_REVERSE_SWAP = [
 # class SwapServerError(Exception):
 #     def __str__(self):
 #         return "The swap server errored or is unreachable."
-#
-# def now():
-#     return int(time.time())
-#
+
 # @attr.s
 # class SwapFees:
 #     percentage = attr.ib(type=int)
@@ -210,9 +207,9 @@ class SwapManager:
         for k, swap in self.swaps.items():
             if swap.prepay_hash is not None:
                 self.prepayments[swap.prepay_hash] = bytes.fromhex(k)
-        self.is_server = True
-        self.use_nostr = True
-        self.is_initialized = asyncio.Event()
+        self.is_server = True  # this plugin is always a server (todo: for now)
+        self.use_nostr = True  # this plugin only uses nostr comm
+        self.is_initialized = asyncio.Event()  # set once nostr is connected to relays
 
 #     def start_network(self, network: 'Network'):
 #         assert network
@@ -227,7 +224,7 @@ class SwapManager:
 #                 continue
 #             self.add_lnwatcher_callback(swap)
 #         asyncio.run_coroutine_threadsafe(self.main_loop(), self.network.asyncio_loop)
-#
+
     # @log_exceptions
     async def run_nostr_server(self):
         with NostrTransport(config=self.config, sm=self) as transport:
@@ -239,24 +236,24 @@ class SwapManager:
                 # todo: publish everytime fees have changed
                 self.server_update_pairs()
                 await transport.publish_offer(self)
-                # await asyncio.sleep(600)
+                await asyncio.sleep(600)
 
 #     @log_exceptions
-#     async def main_loop(self):
-#         tasks = [self.pay_pending_invoices()]
-#         if self.is_server:
-#             if self.config.SWAPSERVER_PORT:
-#                 tasks.append(self.http_server.run())
-#             if self.use_nostr:
-#                 tasks.append(self.run_nostr_server())
-#
-#         async with self.taskgroup as group:
-#             for task in tasks:
-#                 await group.spawn(task)
-#
-#     async def stop(self):
-#         await self.taskgroup.cancel_remaining()
-#
+    async def main_loop(self):
+        tasks = [self.pay_pending_invoices()]
+        if self.is_server:
+            if self.use_nostr:
+                tasks.append(self.run_nostr_server())
+            # if self.config.SWAPSERVER_PORT:
+            #     tasks.append(self.http_server.run())
+
+        async with self.taskgroup as group:
+            for task in tasks:
+                await group.spawn(task)
+
+    async def stop(self):
+        await self.taskgroup.cancel_remaining()
+
 #     def create_transport(self):
 #         from .lnutil import generate_random_keypair
 #         if self.use_nostr:
@@ -264,34 +261,35 @@ class SwapManager:
 #             return NostrTransport(self.config, self, keypair)
 #         else:
 #             return HttpTransport(self.config, self)
-#
-#     async def pay_invoice(self, key):
-#         self.logger.info(f'trying to pay invoice {key}')
-#         self.invoices_to_pay[key] = 1000000000000 # lock
-#         try:
-#             invoice = self.wallet.get_invoice(key)
-#             success, log = await self.lnworker.pay_invoice(invoice.lightning_invoice, attempts=10)
-#         except Exception as e:
-#             self.logger.info(f'exception paying {key}, will not retry')
-#             self.invoices_to_pay.pop(key, None)
-#             return
-#         if not success:
-#             self.logger.info(f'failed to pay {key}, will retry in 10 minutes')
-#             self.invoices_to_pay[key] = now() + 600
-#         else:
-#             self.logger.info(f'paid invoice {key}')
-#             self.invoices_to_pay.pop(key, None)
-#
-#     async def pay_pending_invoices(self):
-#         self.invoices_to_pay = {}
-#         while True:
-#             await asyncio.sleep(5)
-#             for key, not_before in list(self.invoices_to_pay.items()):
-#                 if now() < not_before:
-#                     continue
-#                 await self.taskgroup.spawn(self.pay_invoice(key))
-#
-#     def cancel_normal_swap(self, swap: SwapData):
+
+    # async def pay_invoice(self, key):
+    #     self.logger.info(f'trying to pay invoice {key}')
+    #     self.invoices_to_pay[key] = 1000000000000 # lock
+    #     try:
+    #         invoice = self.wallet.get_invoice(key)
+    #         success, log = await self.lnworker.pay_invoice(invoice.lightning_invoice, attempts=10)
+    #     except Exception as e:
+    #         self.logger.info(f'exception paying {key}, will not retry')
+    #         self.invoices_to_pay.pop(key, None)
+    #         return
+    #     if not success:
+    #         self.logger.info(f'failed to pay {key}, will retry in 10 minutes')
+    #         self.invoices_to_pay[key] = now() + 600
+    #     else:
+    #         self.logger.info(f'paid invoice {key}')
+    #         self.invoices_to_pay.pop(key, None)
+
+    async def pay_pending_invoices(self):
+        self.invoices_to_pay = {}
+        while True:
+            await asyncio.sleep(5)
+            for key, not_before in list(self.invoices_to_pay.items()):
+                if now() < not_before:
+                    continue
+                await self.taskgroup.spawn(self.pay_invoice(key))
+                # todo: here
+
+    #     def cancel_normal_swap(self, swap: SwapData):
 #         """ we must not have broadcast the funding tx """
 #         if swap is None:
 #             return

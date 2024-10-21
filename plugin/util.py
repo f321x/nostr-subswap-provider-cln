@@ -2125,3 +2125,6 @@ class classproperty(property):
 #         return text
 #     else:
 #         return text[:max_len] + f"... (truncated. orig_len={len(text)})"
+
+def now():
+    return int(time.time())
