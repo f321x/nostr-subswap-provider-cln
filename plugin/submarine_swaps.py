@@ -7,7 +7,6 @@ import math
 import time
 
 import attr
-import aiohttp
 
 from electrum_ecc import ECPrivkey
 
@@ -29,14 +28,15 @@ from .bitcoin import dust_threshold, DummyAddress
 from .simple_logger import Logger
 from .lnutil import hex_to_bytes
 from .lnaddr import lndecode
-# from .json_db import StoredObject, stored_in
+from .json_db import StoredObject, stored_in, JsonDB
 from . import constants
+from .cln_chain import CLNChainWallet, TxBroadcastError
+from .cln_lightning import CLNLightning
 # from .address_synchronizer import TX_HEIGHT_LOCAL
 # from .i18n import _
 
 from .crypto import ripemd
 from .invoices import Invoice
-# from .network import TxBroadcastError
 # from .lnonion import OnionRoutingFailure, OnionFailureCode
 
 
@@ -130,31 +130,31 @@ WITNESS_TEMPLATE_REVERSE_SWAP = [
 #     claim_fee = attr.ib(type=int)
 #     min_amount = attr.ib(type=int)
 #     max_amount = attr.ib(type=int)
-#
-# # @stored_in('submarine_swaps')
-# @attr.s
-# class SwapData: # StoredObject
-#     is_reverse = attr.ib(type=bool)  # for whoever is running code (PoV of client or server)
-#     locktime = attr.ib(type=int)
-#     onchain_amount = attr.ib(type=int)  # in sats
-#     lightning_amount = attr.ib(type=int)  # in sats
-#     redeem_script = attr.ib(type=bytes, converter=hex_to_bytes)
-#     preimage = attr.ib(type=Optional[bytes], converter=hex_to_bytes)
-#     prepay_hash = attr.ib(type=Optional[bytes], converter=hex_to_bytes)
-#     privkey = attr.ib(type=bytes, converter=hex_to_bytes)
-#     lockup_address = attr.ib(type=str)
-#     receive_address = attr.ib(type=str)
-#     funding_txid = attr.ib(type=Optional[str])
-#     spending_txid = attr.ib(type=Optional[str])
-#     is_redeemed = attr.ib(type=bool)
-#
-#     _funding_prevout = None  # type: Optional[TxOutpoint]  # for RBF
-#     _payment_hash = None
-#
-#     @property
-#     def payment_hash(self) -> bytes:
-#         return self._payment_hash
-#
+
+@stored_in('submarine_swaps')
+@attr.s
+class SwapData(StoredObject):
+    is_reverse = attr.ib(type=bool)  # for whoever is running code (PoV of client or server)
+    locktime = attr.ib(type=int)
+    onchain_amount = attr.ib(type=int)  # in sats
+    lightning_amount = attr.ib(type=int)  # in sats
+    redeem_script = attr.ib(type=bytes, converter=hex_to_bytes)
+    preimage = attr.ib(type=Optional[bytes], converter=hex_to_bytes)
+    prepay_hash = attr.ib(type=Optional[bytes], converter=hex_to_bytes)
+    privkey = attr.ib(type=bytes, converter=hex_to_bytes)
+    lockup_address = attr.ib(type=str)
+    receive_address = attr.ib(type=str)
+    funding_txid = attr.ib(type=Optional[str])
+    spending_txid = attr.ib(type=Optional[str])
+    is_redeemed = attr.ib(type=bool)
+
+    _funding_prevout = None  # type: Optional[TxOutpoint]  # for RBF
+    _payment_hash = None
+
+    @property
+    def payment_hash(self) -> bytes:
+        return self._payment_hash
+
 # def create_claim_tx(
 #         *,
 #         txin: PartialTxInput,
@@ -172,47 +172,48 @@ WITNESS_TEMPLATE_REVERSE_SWAP = [
 #     tx = PartialTransaction.from_io([txin], [txout], version=2, locktime=locktime)
 #     tx.set_rbf(True)
 #     return tx
-#
-#
-# class SwapManager:
-#
-#     network: Optional['Network'] = None
-#     lnwatcher: Optional['LNWalletWatcher'] = None
-#
-#     def __init__(self, *, wallet: 'Abstract_Wallet', lnworker: 'LNWallet'):
-#         self.logger = Logger(__name__)
-#         self.normal_fee = None
-#         self.lockup_fee = None
-#         self.claim_fee = None # part of the boltz prococol, not used by Electrum
-#         self.percentage = None
-#         self._min_amount = None
-#         self._max_amount = None
-#
-#         self.wallet = wallet
-#         self.config = wallet.config
-#         self.lnworker = lnworker
+
+
+class SwapManager:
+
+    # network: Optional['Network'] = None
+    # lnwatcher: Optional['LNWalletWatcher'] = None
+
+    def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning', db: 'JsonDB'):
+        self.logger = Logger(__name__)
+        self.normal_fee = None
+        self.lockup_fee = None
+        self.claim_fee = None # part of the boltz prococol, not used by Electrum
+        self.percentage = None
+        self._min_amount = None
+        self._max_amount = None
+
+        self.wallet = wallet
+        self.lnworker = lnworker
+        self.db = db
+        self.dummy_address = DummyAddress.SWAP
+        # self.config = wallet.config
 #         self.config = wallet.config
 #         self.taskgroup = OldTaskGroup()
-#         self.dummy_address = DummyAddress.SWAP
-#
-#         self.swaps = self.wallet.db.get_dict('submarine_swaps')  # type: Dict[str, SwapData]
-#         self._swaps_by_funding_outpoint = {}  # type: Dict[TxOutpoint, SwapData]
-#         self._swaps_by_lockup_address = {}  # type: Dict[str, SwapData]
-#         for payment_hash_hex, swap in self.swaps.items():
-#             payment_hash = bytes.fromhex(payment_hash_hex)
-#             swap._payment_hash = payment_hash
-#             self._add_or_reindex_swap(swap)
-#             if not swap.is_reverse and not swap.is_redeemed:
-#                 self.lnworker.register_hold_invoice(payment_hash, self.hold_invoice_callback)
-#
-#         self.prepayments = {}  # type: Dict[bytes, bytes] # fee_rhash -> rhash
-#         for k, swap in self.swaps.items():
-#             if swap.prepay_hash is not None:
-#                 self.prepayments[swap.prepay_hash] = bytes.fromhex(k)
-#         self.is_server = self.config.get('enable_plugin_swapserver', False)
-#         self.use_nostr = bool(self.config.NOSTR_RELAYS)
-#         self.is_initialized = asyncio.Event()
-#
+
+        self.swaps = self.db.get_dict('submarine_swaps')  # type: Dict[str, SwapData]
+        self._swaps_by_funding_outpoint = {}  # type: Dict[TxOutpoint, SwapData]
+        self._swaps_by_lockup_address = {}  # type: Dict[str, SwapData]
+        for payment_hash_hex, swap in self.swaps.items():
+            payment_hash = bytes.fromhex(payment_hash_hex)
+            swap._payment_hash = payment_hash
+            self._add_or_reindex_swap(swap)
+            if not swap.is_reverse and not swap.is_redeemed:
+                self.lnworker.register_hold_invoice(payment_hash, self.hold_invoice_callback)
+
+        self.prepayments = {}  # type: Dict[bytes, bytes] # fee_rhash -> rhash
+        for k, swap in self.swaps.items():
+            if swap.prepay_hash is not None:
+                self.prepayments[swap.prepay_hash] = bytes.fromhex(k)
+        self.is_server = True
+        self.use_nostr = True
+        self.is_initialized = asyncio.Event()
+
 #     def start_network(self, network: 'Network'):
 #         assert network
 #         if self.network is not None:
@@ -454,22 +455,22 @@ WITNESS_TEMPLATE_REVERSE_SWAP = [
 #     def add_lnwatcher_callback(self, swap: SwapData) -> None:
 #         callback = lambda: self._claim_swap(swap)
 #         self.lnwatcher.add_callback(swap.lockup_address, callback)
-#
-#     async def hold_invoice_callback(self, payment_hash: bytes) -> None:
-#         # note: this assumes the wallet has been unlocked
-#         key = payment_hash.hex()
-#         if key in self.swaps:
-#             swap = self.swaps[key]
-#             if swap.funding_txid is None:
-#                 password = self.wallet.get_unlocked_password()
-#                 for batch_rbf in [True, False]:
-#                     tx = self.create_funding_tx(swap, None, password=password, batch_rbf=batch_rbf)
-#                     try:
-#                         await self.broadcast_funding_tx(swap, tx)
-#                     except TxBroadcastError:
-#                         continue
-#                     break
-#
+
+    async def hold_invoice_callback(self, payment_hash: bytes) -> None:
+        # note: this assumes the wallet has been unlocked
+        key = payment_hash.hex()
+        if key in self.swaps:
+            swap = self.swaps[key]
+            if swap.funding_txid is None:
+                # password = self.wallet.get_unlocked_password()
+                # for batch_rbf in [True, False]:
+                tx = self.create_funding_tx(swap=swap, tx=None)
+                # try:
+                await self.broadcast_funding_tx(swap, tx)
+                # except TxBroadcastError:
+                #     continue
+                # break
+
 #     def create_normal_swap(self, *, lightning_amount_sat: int, payment_hash: bytes, their_pubkey: bytes = None):
 #         """ server method """
 #         assert lightning_amount_sat
@@ -764,32 +765,32 @@ WITNESS_TEMPLATE_REVERSE_SWAP = [
 #         while swap.funding_txid is None and not lnaddr.is_expired():
 #             await asyncio.sleep(0.1)
 #         return swap.funding_txid
-#
-#     def create_funding_tx(
-#         self,
-#         swap: SwapData,
-#         tx: Optional[PartialTransaction],
-#         *,
-#         password,
-#         batch_rbf: Optional[bool] = None,
-#     ) -> PartialTransaction:
-#         # create funding tx
-#         # note: rbf must not decrease payment
-#         # this is taken care of in wallet._is_rbf_allowed_to_touch_tx_output
-#         if tx is None:
-#             funding_output = PartialTxOutput.from_address_and_value(swap.lockup_address, swap.onchain_amount)
-#             tx = self.wallet.create_transaction(
-#                 outputs=[funding_output],
-#                 rbf=True,
-#                 password=password,
-#                 batch_rbf=batch_rbf,
-#             )
-#         else:
-#             tx.replace_output_address(DummyAddress.SWAP, swap.lockup_address)
-#             tx.set_rbf(True)
-#             self.wallet.sign_transaction(tx, password)
-#         return tx
-#
+
+    def create_funding_tx(
+        self,
+        *,
+        swap: SwapData,
+        tx: Optional[PartialTransaction],
+        # *,
+        # password,
+        # batch_rbf: Optional[bool] = None,
+    ) -> PartialTransaction:
+        # create funding tx
+        # note: rbf must not decrease payment
+        # this is taken care of in wallet._is_rbf_allowed_to_touch_tx_output
+        if tx is None:
+            funding_output = PartialTxOutput.from_address_and_value(swap.lockup_address, swap.onchain_amount)
+            tx = self.wallet.create_transaction(
+                outputs=[funding_output],
+                rbf=True,
+            )
+        else:
+            raise NotImplementedError
+            # tx.replace_output_address(DummyAddress.SWAP, swap.lockup_address)
+            # tx.set_rbf(True)
+            # self.wallet.sign_transaction(tx, password)
+        return tx
+
 #     @log_exceptions
 #     async def request_swap_for_tx(self, transport, tx: 'PartialTransaction') -> Optional[Tuple[SwapData, str, PartialTransaction]]:
 #         for o in tx.outputs():
@@ -806,11 +807,11 @@ WITNESS_TEMPLATE_REVERSE_SWAP = [
 #             expected_onchain_amount_sat=change_amount)
 #         tx.replace_output_address(DummyAddress.SWAP, swap.lockup_address)
 #         return swap, invoice, tx
-#
+
 #     @log_exceptions
-#     async def broadcast_funding_tx(self, swap: SwapData, tx: Transaction) -> None:
-#         swap.funding_txid = tx.txid()
-#         await self.network.broadcast_transaction(tx)
+    async def broadcast_funding_tx(self, swap: SwapData, tx: Transaction) -> None:
+        swap.funding_txid = tx.txid()
+        await self.wallet.broadcast_transaction(tx)
 #
 #     async def reverse_swap(
 #             self, transport,
@@ -908,14 +909,14 @@ WITNESS_TEMPLATE_REVERSE_SWAP = [
 #         tasks = [asyncio.create_task(self.lnworker.pay_invoice(invoice, channels=channels)), asyncio.create_task(wait_for_funding(swap))]
 #         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 #         return swap.funding_txid
-#
-#     def _add_or_reindex_swap(self, swap: SwapData) -> None:
-#         if swap.payment_hash.hex() not in self.swaps:
-#             self.swaps[swap.payment_hash.hex()] = swap
-#         if swap._funding_prevout:
-#             self._swaps_by_funding_outpoint[swap._funding_prevout] = swap
-#         self._swaps_by_lockup_address[swap.lockup_address] = swap
-#
+
+    def _add_or_reindex_swap(self, swap: SwapData) -> None:
+        if swap.payment_hash.hex() not in self.swaps:
+            self.swaps[swap.payment_hash.hex()] = swap
+        if swap._funding_prevout:
+            self._swaps_by_funding_outpoint[swap._funding_prevout] = swap
+        self._swaps_by_lockup_address[swap.lockup_address] = swap
+
 #     def server_update_pairs(self) -> None:
 #         """ for server """
 #         self.percentage = float(self.config.SWAPSERVER_FEE_MILLIONTHS) / 10000

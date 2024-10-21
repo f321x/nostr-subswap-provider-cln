@@ -54,11 +54,11 @@ import socket
 import enum
 
 import attr
-import aiohttp
-from aiohttp_socks import ProxyConnector, ProxyType
+# import aiohttp
+# from aiohttp_socks import ProxyConnector, ProxyType
 import aiorpcx
-import certifi
-import dns.resolver
+# import certifi
+# import dns.resolver
 
 # from .i18n import _
 from .simple_logger import get_logger
@@ -467,28 +467,28 @@ class InvoiceError(UserFacingException): pass
 # def constant_time_compare(val1, val2):
 #     """Return True if the two strings are equal, False otherwise."""
 #     return hmac.compare_digest(to_bytes(val1, 'utf8'), to_bytes(val2, 'utf8'))
-#
-#
-# _profiler_logger = _logger.getChild('profiler')
-# def profiler(func=None, *, min_threshold: Union[int, float, None] = None):
-#     """Function decorator that logs execution time.
-#
-#     min_threshold: if set, only log if time taken is higher than threshold
-#     NOTE: does not work with async methods.
-#     """
-#     if func is None:  # to make "@profiler(...)" work. (in addition to bare "@profiler")
-#         return partial(profiler, min_threshold=min_threshold)
-#     def do_profile(*args, **kw_args):
-#         name = func.__qualname__
-#         t0 = time.time()
-#         o = func(*args, **kw_args)
-#         t = time.time() - t0
-#         if min_threshold is None or t > min_threshold:
-#             _profiler_logger.debug(f"{name} {t:,.4f} sec")
-#         return o
-#     return do_profile
-#
-#
+
+
+_profiler_logger = _logger.getChild('profiler')
+def profiler(func=None, *, min_threshold: Union[int, float, None] = None):
+    """Function decorator that logs execution time.
+
+    min_threshold: if set, only log if time taken is higher than threshold
+    NOTE: does not work with async methods.
+    """
+    if func is None:  # to make "@profiler(...)" work. (in addition to bare "@profiler")
+        return partial(profiler, min_threshold=min_threshold)
+    def do_profile(*args, **kw_args):
+        name = func.__qualname__
+        t0 = time.time()
+        o = func(*args, **kw_args)
+        t = time.time() - t0
+        if min_threshold is None or t > min_threshold:
+            _profiler_logger.debug(f"{name} {t:,.4f} sec")
+        return o
+    return do_profile
+
+
 # class AsyncHangDetector:
 #     """Context manager that logs every `n` seconds if encapsulated context still has not exited."""
 #
@@ -566,18 +566,18 @@ class InvoiceError(UserFacingException): pass
 #         raise FileNotFoundError(
 #             'Cannot find file but datadir is there.' + '\n' +
 #             'Should be at {}'.format(path))
-#
-#
-# def standardize_path(path):
-#     # note: os.path.realpath() is not used, as on Windows it can return non-working paths (see #8495).
-#     #       This means that we don't resolve symlinks!
-#     return os.path.normcase(
-#                 os.path.abspath(
-#                     os.path.expanduser(
-#                         path
-#     )))
-#
-#
+
+
+def standardize_path(path):
+    # note: os.path.realpath() is not used, as on Windows it can return non-working paths (see #8495).
+    #       This means that we don't resolve symlinks!
+    return os.path.normcase(
+                os.path.abspath(
+                    os.path.expanduser(
+                        path
+    )))
+
+
 # def get_new_wallet_name(wallet_folder: str) -> str:
 #     """Returns a file basename for a new wallet to be used.
 #     Can raise OSError.
@@ -1145,20 +1145,20 @@ def versiontuple(v):
 #     except (IOError, os.error) as e:
 #         _logger.exception('')
 #         raise FileExportFailed(e)
-#
-#
-# def os_chmod(path, mode):
-#     """os.chmod aware of tmpfs"""
-#     try:
-#         os.chmod(path, mode)
-#     except OSError as e:
-#         xdg_runtime_dir = os.environ.get("XDG_RUNTIME_DIR", None)
-#         if xdg_runtime_dir and is_subpath(path, xdg_runtime_dir):
-#             _logger.info(f"Tried to chmod in tmpfs. Skipping... {e!r}")
-#         else:
-#             raise
-#
-#
+
+
+def os_chmod(path, mode):
+    """os.chmod aware of tmpfs"""
+    try:
+        os.chmod(path, mode)
+    except OSError as e:
+        xdg_runtime_dir = os.environ.get("XDG_RUNTIME_DIR", None)
+        if xdg_runtime_dir and is_subpath(path, xdg_runtime_dir):
+            _logger.info(f"Tried to chmod in tmpfs. Skipping... {e!r}")
+        else:
+            raise
+
+
 # def make_dir(path, allow_symlink=True):
 #     """Make directory if it does not yet exist."""
 #     if not os.path.exists(path):
@@ -1166,17 +1166,17 @@ def versiontuple(v):
 #             raise Exception('Dangling link: ' + path)
 #         os.mkdir(path)
 #         os_chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-#
-#
-# def is_subpath(long_path: str, short_path: str) -> bool:
-#     """Returns whether long_path is a sub-path of short_path."""
-#     try:
-#         common = os.path.commonpath([long_path, short_path])
-#     except ValueError:
-#         return False
-#     short_path = standardize_path(short_path)
-#     common     = standardize_path(common)
-#     return short_path == common
+
+
+def is_subpath(long_path: str, short_path: str) -> bool:
+    """Returns whether long_path is a sub-path of short_path."""
+    try:
+        common = os.path.commonpath([long_path, short_path])
+    except ValueError:
+        return False
+    short_path = standardize_path(short_path)
+    common     = standardize_path(common)
+    return short_path == common
 
 
 def log_exceptions(func):
@@ -2024,30 +2024,30 @@ class OldTaskGroup(aiorpcx.TaskGroup):
 #     x_copy = list(x)  # copy
 #     random.shuffle(x_copy)  # shuffle in-place
 #     return x_copy
-#
-#
-# def test_read_write_permissions(path) -> None:
-#     # note: There might already be a file at 'path'.
-#     #       Make sure we do NOT overwrite/corrupt that!
-#     temp_path = "%s.tmptest.%s" % (path, os.getpid())
-#     echo = "fs r/w test"
-#     try:
-#         # test READ permissions for actual path
-#         if os.path.exists(path):
-#             with open(path, "rb") as f:
-#                 f.read(1)  # read 1 byte
-#         # test R/W sanity for "similar" path
-#         with open(temp_path, "w", encoding='utf-8') as f:
-#             f.write(echo)
-#         with open(temp_path, "r", encoding='utf-8') as f:
-#             echo2 = f.read()
-#         os.remove(temp_path)
-#     except Exception as e:
-#         raise IOError(e) from e
-#     if echo != echo2:
-#         raise IOError('echo sanity-check failed')
-#
-#
+
+
+def test_read_write_permissions(path) -> None:
+    # note: There might already be a file at 'path'.
+    #       Make sure we do NOT overwrite/corrupt that!
+    temp_path = "%s.tmptest.%s" % (path, os.getpid())
+    echo = "fs r/w test"
+    try:
+        # test READ permissions for actual path
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                f.read(1)  # read 1 byte
+        # test R/W sanity for "similar" path
+        with open(temp_path, "w", encoding='utf-8') as f:
+            f.write(echo)
+        with open(temp_path, "r", encoding='utf-8') as f:
+            echo2 = f.read()
+        os.remove(temp_path)
+    except Exception as e:
+        raise IOError(e) from e
+    if echo != echo2:
+        raise IOError('echo sanity-check failed')
+
+
 # class nullcontext:
 #     """Context manager that does no additional processing.
 #     This is a ~backport of contextlib.nullcontext from Python 3.10
