@@ -7,5 +7,8 @@ class CLNLightning:
         self.config = config
         pass
 
-    def register_hold_invoice(self, payment_hash: bytes, callback: callable):
+    def register_hold_invoice(self, *, payment_hash: bytes, callback: callable):
+        pass
+
+    async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
         pass
