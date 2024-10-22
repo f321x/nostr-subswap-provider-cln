@@ -36,11 +36,11 @@ from functools import partial
 # import aiohttp
 # from aiohttp_socks import ProxyConnector, ProxyType
 import aiorpcx
+import logging
 # import certifi
 # import dns.resolver
 
 # from .i18n import _
-from .simple_logger import get_logger
 
 # if TYPE_CHECKING:
 #     from .network import Network
@@ -49,7 +49,7 @@ from .simple_logger import get_logger
 #     from .paymentrequest import PaymentRequest
 #
 
-_logger = get_logger(__name__)
+_logger = logging.getLogger(__name__)
 
 bfh = bytes.fromhex
 class BitcoinException(Exception): pass

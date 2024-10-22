@@ -26,12 +26,12 @@ import os
 # import threading
 import stat
 import base64
+import logging
 from enum import IntEnum
 
 from .utils import (WalletFileException, standardize_path,
                     test_read_write_permissions, os_chmod)
 
-from .simple_logger import Logger
 
 #
 # def get_derivation_used_for_hw_device_encryption():
@@ -57,8 +57,7 @@ class Storage:  # (Logger):
     # TODO maybe split this into separate create() and open() classmethods, to prevent some bugs.
     #      Until then, the onus is on the caller to check file_exists().
     def __init__(self, path):
-        # Logger.__init__(self)
-        self.logger = Logger(__name__)
+        self.logger = logging.getLogger(__name__)
         self.path = standardize_path(path)
         self._file_exists = bool(self.path and os.path.exists(self.path))
         self.logger.info(f"wallet path {self.path}")

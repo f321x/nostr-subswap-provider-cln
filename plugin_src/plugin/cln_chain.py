@@ -23,10 +23,15 @@ class CLNChainWallet:
             raise TxBroadcastError(e) from e
 
 
-    async def get_chain_fee(self, *, size_vbyte: int) -> int:
+    def get_chain_fee(self, *, size_vbyte: int) -> int:
         """Uses CLN lightning-feerates to get required fee for given size"""
-        # speed_target_blocks = self.config.confirmation_speed_target_blocks
+        speed_target_blocks = self.config.confirmation_speed_target_blocks
         feerates = self.cln.plugin.rpc.feerates("perkb")  # call should not take too long to pollute the async rt
+        # ret val: {'warning_missing_feerates': 'Some fee estimates unavailable: bitcoind startup?',
+        # 'perkb': {'min_acceptable': 1012, 'max_acceptable': 4294967295, 'floor': 1012, 'estimates': []}}
+
+        # try:
+        #     feerates["perkb"]["estimates"][0]
         return feerates
 
 

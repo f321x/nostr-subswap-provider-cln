@@ -37,6 +37,7 @@ from enum import IntEnum
 import itertools
 import binascii
 import copy
+import logging
 
 import electrum_ecc as ecc
 
@@ -51,7 +52,6 @@ from .bitcoin import (TYPE_ADDRESS, TYPE_SCRIPT, hash_160,
                                   base_encode, construct_witness, construct_script,
                                   taproot_tweak_seckey)
 from .crypto import sha256d, sha256
-from .simple_logger import get_logger
 from .descriptor import Descriptor, MissingSolutionPiece, create_dummy_descriptor_from_address
 
 # if TYPE_CHECKING:
@@ -60,7 +60,7 @@ from .descriptor import Descriptor, MissingSolutionPiece, create_dummy_descripto
 #     from .simple_config import SimpleConfig
 
 
-_logger = get_logger(__name__)
+_logger = logging.getLogger(__name__)
 DEBUG_PSBT_PARSING = False
 
 
