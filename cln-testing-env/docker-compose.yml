@@ -2,6 +2,7 @@
 
 services:
   bitcoind:
+    container_name: mutinynet
     image: fedimint/mutinynet-bitcoind:master
     command: --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333
     ports:
@@ -13,6 +14,21 @@ services:
       - dev-net
     restart: always
     platform: linux/amd64
+
+# normal signet (needed to test fee estimation, kind of impossible to get signet coins)
+#  bitcoind:
+#    container_name: signet
+#    image: dobtc/bitcoin:28.0
+#    command: -signet --rpcuser=bitcoin --rpcpassword=bitcoin -rpcport=38332
+#    ports:
+#      - 0.0.0.0:38333:38333
+#      - 0.0.0.0:38332:38332
+#    volumes:
+#      - bitcoin_datadir:/root/.bitcoin
+#    networks:
+#      - dev-net
+#    restart: always
+#    platform: linux/amd64
 
 #  testnet 4 (not yet supported by CLN)
 #  bitcoind:

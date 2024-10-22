@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from typing import Optional, Dict
 
 import attr
@@ -13,7 +14,6 @@ from .bitcoin import opcodes
 from .transaction import PartialTxOutput, PartialTransaction, Transaction, TxOutpoint, OPPushDataGeneric, OPPushDataPubkey
 from .utils import OldTaskGroup, now
 from .bitcoin import DummyAddress
-from plugin_src.plugin.simple_logger import Logger
 from .lnutil import hex_to_bytes
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants, lnutil
@@ -165,7 +165,7 @@ class SwapManager:
 
     def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning',
                  db: 'JsonDB', plugin_config: 'PluginConfig'):
-        self.logger = Logger(__name__)
+        self.logger = logging.getLogger(__name__)
         self.normal_fee = None
         self.lockup_fee = None
         self.claim_fee = None  # part of the boltz prococol, not used by Electrum

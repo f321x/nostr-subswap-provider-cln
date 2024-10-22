@@ -27,9 +27,9 @@ import copy
 import json
 from typing import Optional
 import jsonpatch
+import logging
 
 from .utils import WalletFileException, profiler
-from .simple_logger import Logger
 from .storage import Storage
 
 
@@ -227,7 +227,7 @@ class JsonDB:  # (Logger):
         upgrader=None,
     ):
         # Logger.__init__(self)
-        self.logger = Logger(__name__)
+        self.logger = logging.getLogger(__name__)
         self.lock = threading.RLock()
         self.storage = storage
         self.encoder = encoder

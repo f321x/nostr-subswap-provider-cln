@@ -34,7 +34,6 @@ from typing import Union, Mapping, Optional
 import electrum_ecc as ecc
 
 from .utils import assert_bytes, InvalidPassword, to_bytes, to_string, WalletFileException, versiontuple
-# from .logging import get_logger
 
 # _logger = get_logger(__name__)
 

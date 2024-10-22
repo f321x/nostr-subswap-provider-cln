@@ -12,7 +12,7 @@ class PluginConfig:
         self.nostr_relays: Optional[Relay] = None
         self.swapserver_fee_millionths = None
         self.confirmation_speed_target_blocks = None
-        # self.logger = Logger()
+        self.log_level = "DEBUG"
         pass
 
     def load_from_env(self) -> 'PluginConfig':
