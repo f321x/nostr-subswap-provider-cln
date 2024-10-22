@@ -27,7 +27,7 @@ async def main():
     plugin = await CLNPlugin().check_running()
     cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
     # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
-    print(f"PLUGIN FEERATE: {cln_chain_wallet.get_chain_fee(size_vbyte=100)}", file=sys.stderr)
+    # todo: print(f"PLUGIN FEERATE: {cln_chain_wallet.get_chain_fee(size_vbyte=100)}", file=sys.stderr)
 
     # data storage
     # storage = Storage(".")  # storage path (cln .lightning dir)
