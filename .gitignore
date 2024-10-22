@@ -2,3 +2,4 @@ venv
 .vscode
 .idea
 cln-testing-env/plugins/*
+*__pycache__*
