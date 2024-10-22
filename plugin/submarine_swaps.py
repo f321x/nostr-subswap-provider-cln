@@ -235,7 +235,7 @@ class SwapManager:
             self.logger.info(f'nostr is connected')
             while True:
                 # todo: publish everytime fees have changed
-                self.server_update_pairs()
+                await self.server_update_pairs()
                 await transport.publish_offer(self)
                 await asyncio.sleep(600)
 
@@ -263,22 +263,22 @@ class SwapManager:
 #         else:
 #             return HttpTransport(self.config, self)
 
-    # async def pay_invoice(self, key):
-    #     self.logger.info(f'trying to pay invoice {key}')
-    #     self.invoices_to_pay[key] = 1000000000000 # lock
-    #     try:
-    #         invoice = self.wallet.get_invoice(key)
-    #         success, log = await self.lnworker.pay_invoice(invoice.lightning_invoice, attempts=10)
-    #     except Exception as e:
-    #         self.logger.info(f'exception paying {key}, will not retry')
-    #         self.invoices_to_pay.pop(key, None)
-    #         return
-    #     if not success:
-    #         self.logger.info(f'failed to pay {key}, will retry in 10 minutes')
-    #         self.invoices_to_pay[key] = now() + 600
-    #     else:
-    #         self.logger.info(f'paid invoice {key}')
-    #         self.invoices_to_pay.pop(key, None)
+    async def pay_invoice(self, key):
+        self.logger.info(f'trying to pay invoice {key}')
+        self.invoices_to_pay[key] = 1000000000000 # lock
+        try:
+            invoice = self.wallet.get_invoice(key)
+            success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=10)
+        except Exception as e:
+            self.logger.info(f'exception paying {key}, will not retry')
+            self.invoices_to_pay.pop(key, None)
+            return
+        if not success:
+            self.logger.info(f'failed to pay {key}, will retry in 10 minutes')
+            self.invoices_to_pay[key] = now() + 600
+        else:
+            self.logger.info(f'paid invoice {key}')
+            self.invoices_to_pay.pop(key, None)
 
     async def pay_pending_invoices(self):
         self.invoices_to_pay = {}
@@ -434,9 +434,10 @@ class SwapManager:
 #     def get_claim_fee(self):
 #         return self.get_fee(CLAIM_FEE_SIZE)
 
-    def get_fee(self, *, size_vb: int) -> int:
+    async def get_fee(self, *, size_vb: int) -> int:
         # note: 'size' is in vbytes
-        return self.wallet.get_chain_fee(size_vbyte=size_vb, config=self.config)
+        return await self.wallet.get_chain_fee(size_vbyte=size_vb)
+
 
     # @classmethod
     # def _get_fee(cls, *, size, config: 'PluginConfig'):
@@ -916,14 +917,14 @@ class SwapManager:
             self._swaps_by_funding_outpoint[swap._funding_prevout] = swap
         self._swaps_by_lockup_address[swap.lockup_address] = swap
 
-    def server_update_pairs(self) -> None:
+    async def server_update_pairs(self) -> None:
         """ for server """
         self.percentage = float(self.config.swapserver_fee_millionths) / 10000
         self._min_amount = 20000
         self._max_amount = 10000000
-        self.normal_fee = self.get_fee(size_vb=CLAIM_FEE_SIZE)
-        self.lockup_fee = self.get_fee(size_vb=LOCKUP_FEE_SIZE)
-        self.claim_fee = self.get_fee(size_vb=CLAIM_FEE_SIZE)
+        self.normal_fee = await self.get_fee(size_vb=CLAIM_FEE_SIZE)
+        self.lockup_fee = await self.get_fee(size_vb=LOCKUP_FEE_SIZE)
+        self.claim_fee = await self.get_fee(size_vb=CLAIM_FEE_SIZE)
 
 #     def update_pairs(self, pairs):
 #         self.logger.info(f'updating fees {pairs}')
