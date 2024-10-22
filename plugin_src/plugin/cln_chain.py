@@ -26,12 +26,16 @@ class CLNChainWallet:
     def get_chain_fee(self, *, size_vbyte: int) -> int:
         """Uses CLN lightning-feerates to get required fee for given size"""
         speed_target_blocks = self.config.confirmation_speed_target_blocks
-        feerates = self.cln.plugin.rpc.feerates("perkb")  # call should not take too long to pollute the async rt
-        # ret val: {'warning_missing_feerates': 'Some fee estimates unavailable: bitcoind startup?',
-        # 'perkb': {'min_acceptable': 1012, 'max_acceptable': 4294967295, 'floor': 1012, 'estimates': []}}
-
-        # try:
-        #     feerates["perkb"]["estimates"][0]
+        try:
+            # ret val: {'warning_missing_feerates': 'Some fee estimates unavailable: bitcoind startup?',
+            # 'perkb': {'min_acceptable': 1012, 'max_acceptable': 4294967295, 'floor': 1012, 'estimates': []}}
+            feerates = self.cln.plugin.rpc.feerates("perkb")['perkb']['estimates']  # call should not take too long to pollute the async rt
+        except RpcError as e:
+            raise Exception(f"Error getting feerates from CLN rpc: {e}") from e
+        feerate_pervb = None
+        for feerate in feerates:  # get feerate closest to target feerate
+            if feerate['blocks'] <= speed_target_blocks:
+                feerate_pervb = feerate['feerate'] / 1000
         return feerates
 
 

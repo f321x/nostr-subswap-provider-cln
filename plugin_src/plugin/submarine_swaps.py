@@ -422,7 +422,7 @@ class SwapManager:
 
     async def get_fee(self, *, size_vb: int) -> int:
         # note: 'size' is in vbytes
-        return await self.wallet.get_chain_fee(size_vbyte=size_vb)
+        return self.wallet.get_chain_fee(size_vbyte=size_vb)
 
 
     # @classmethod
