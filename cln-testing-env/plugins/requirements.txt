@@ -1,0 +1,4 @@
+pyln-client>=24.8.1,<25.0.0
+electrum-aionostr
+attrs>=24.2.0,<25.0.0
+jsonpatch>=1.33,<2.0
