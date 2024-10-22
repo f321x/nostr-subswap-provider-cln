@@ -25,13 +25,11 @@
 import threading
 import copy
 import json
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 import jsonpatch
 
-from . import util
-from .util import WalletFileException, profiler
+from .utils import WalletFileException, profiler
 from .simple_logger import Logger
-
 from .storage import Storage
 
 

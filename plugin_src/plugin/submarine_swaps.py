@@ -1,43 +1,29 @@
 import asyncio
 import json
-import os
-from typing import Optional, Dict, Sequence, Tuple, Iterable
-from decimal import Decimal
-import math
-import time
+from typing import Optional, Dict
 
 import attr
-
-from electrum_ecc import ECPrivkey
 
 import electrum_aionostr as aionostr
 from electrum_aionostr.util import to_nip19
 
 from collections import defaultdict
 
-
-from . import lnutil
-from .crypto import sha256
-from .bitcoin import (script_to_p2wsh, opcodes,
-                          construct_witness, construct_script)
-from .transaction import PartialTxInput, PartialTxOutput, PartialTransaction, Transaction, TxInput, TxOutpoint
-from .transaction import script_GetOp, match_script_against_template, OPPushDataGeneric, OPPushDataPubkey
-from .util import log_exceptions, BelowDustLimit, OldTaskGroup, now
-from .lnutil import REDEEM_AFTER_DOUBLE_SPENT_DELAY
-from .bitcoin import dust_threshold, DummyAddress
-from .simple_logger import Logger
+from .bitcoin import opcodes
+from .transaction import PartialTxOutput, PartialTransaction, Transaction, TxOutpoint, OPPushDataGeneric, OPPushDataPubkey
+from .utils import OldTaskGroup, now
+from .bitcoin import DummyAddress
+from plugin_src.plugin.simple_logger import Logger
 from .lnutil import hex_to_bytes
-from .lnaddr import lndecode
 from .json_db import StoredObject, stored_in, JsonDB
-from . import constants
-from .cln_chain import CLNChainWallet, TxBroadcastError
+from . import constants, lnutil
+from .cln_chain import CLNChainWallet
 from .cln_lightning import CLNLightning
-from .plugin_config import PluginConfig, Keypair, OnlyPubkeyKeypair
+from .plugin_config import PluginConfig
+
 # from .address_synchronizer import TX_HEIGHT_LOCAL
 # from .i18n import _
 
-from .crypto import ripemd
-from .invoices import Invoice
 # from .lnonion import OnionRoutingFailure, OnionFailureCode
 
 

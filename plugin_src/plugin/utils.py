@@ -20,40 +20,19 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-import binascii
-import concurrent.futures
-import logging
-import os, sys, re, json
-from collections import defaultdict, OrderedDict
-from typing import (NamedTuple, Union, TYPE_CHECKING, Tuple, Optional, Callable, Any,
-                    Sequence, Dict, Generic, TypeVar, List, Iterable, Set, Awaitable)
-from datetime import datetime, timezone
+import os
+from typing import (Union, Any,
+                    Set)
+from datetime import datetime
 import decimal
 from decimal import Decimal
-import traceback
-import urllib
-import threading
-import hmac
-import stat
 import locale
 import asyncio
-import urllib.request, urllib.parse, urllib.error
-import builtins
-import json
 import time
-from typing import NamedTuple, Optional
-import ssl
-import ipaddress
-from ipaddress import IPv4Address, IPv6Address
-import random
-import secrets
+from typing import Optional
 import functools
 from functools import partial
-from abc import abstractmethod, ABC
-import socket
-import enum
 
-import attr
 # import aiohttp
 # from aiohttp_socks import ProxyConnector, ProxyType
 import aiorpcx
@@ -469,7 +448,7 @@ class InvoiceError(UserFacingException): pass
 #     return hmac.compare_digest(to_bytes(val1, 'utf8'), to_bytes(val2, 'utf8'))
 
 
-_profiler_logger = _logger.getChild('profiler')
+# _profiler_logger = _logger.getChild('profiler')
 def profiler(func=None, *, min_threshold: Union[int, float, None] = None):
     """Function decorator that logs execution time.
 
@@ -484,7 +463,7 @@ def profiler(func=None, *, min_threshold: Union[int, float, None] = None):
         o = func(*args, **kw_args)
         t = time.time() - t0
         if min_threshold is None or t > min_threshold:
-            _profiler_logger.debug(f"{name} {t:,.4f} sec")
+            _logger.debug(f"{name} {t:,.4f} sec")
         return o
     return do_profile
 

@@ -31,7 +31,7 @@ import struct
 import io
 import base64
 from typing import (Sequence, Union, NamedTuple, Tuple, Optional, Iterable,
-                    Callable, List, Dict, Set, TYPE_CHECKING, Mapping)
+                    Callable, List, Dict, Set, Mapping)
 from collections import defaultdict
 from enum import IntEnum
 import itertools
@@ -41,19 +41,17 @@ import copy
 import electrum_ecc as ecc
 
 # import bitcoin
-from . import bip32
+from . import bip32, bitcoin
 from .bip32 import BIP32Node
-from .util import to_bytes, bfh, chunks, is_hex_str, parse_max_spend
-from . import bitcoin
-from bitcoin import (TYPE_ADDRESS, TYPE_SCRIPT, hash_160,
-                                               hash160_to_p2sh, hash160_to_p2pkh, hash_to_segwit_addr,
-                                               var_int, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC, COIN,
-                                               opcodes, base_decode,
-                                               base_encode, construct_witness, construct_script,
-                                               taproot_tweak_seckey)
+from .utils import to_bytes, bfh, chunks, is_hex_str, parse_max_spend, ShortID, OldTaskGroup
+from .bitcoin import (TYPE_ADDRESS, TYPE_SCRIPT, hash_160,
+                                  hash160_to_p2sh, hash160_to_p2pkh, hash_to_segwit_addr,
+                                  var_int, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC, COIN,
+                                  opcodes, base_decode,
+                                  base_encode, construct_witness, construct_script,
+                                  taproot_tweak_seckey)
 from .crypto import sha256d, sha256
 from .simple_logger import get_logger
-from .util import ShortID, OldTaskGroup
 from .descriptor import Descriptor, MissingSolutionPiece, create_dummy_descriptor_from_address
 
 # if TYPE_CHECKING:

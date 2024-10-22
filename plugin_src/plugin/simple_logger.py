@@ -1,6 +1,8 @@
 # simple logger to print messages to stderr for CLN plugin
 
 import sys
+from typing import Optional
+
 
 class Logger:
     def __init__(self, filename: str):
@@ -19,5 +21,5 @@ class Logger:
         print(f"DEBUG in {self.filename}: {message}", file=sys.stderr)
 
 
-def get_logger():
-    return Logger()
+def get_logger(fn: str):
+    return Logger(fn)

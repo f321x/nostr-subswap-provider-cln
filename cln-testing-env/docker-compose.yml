@@ -14,17 +14,33 @@ services:
     restart: always
     platform: linux/amd64
 
+#  testnet 4 (not yet supported by CLN)
+#  bitcoind:
+#    container_name: testnet4
+#    image: dobtc/bitcoin:28.0
+#    command: --rpcuser=bitcoin --rpcpassword=bitcoin -testnet4 --rpcport=48332
+#    ports:
+#      - 0.0.0.0:48332:48332
+#    volumes:
+#      - bitcoin_datadir:/root/.bitcoin
+#    networks:
+#      - dev-net
+#    restart: always
+#    platform: linux/amd64
+
   lightningd:
-    image: elementsproject/lightningd:v24.08.1
+    container_name: lightningd
+    image: elementsproject/lightningd:latest
     volumes:
       - lightningd_datadir:/root/.lightning
       - bitcoin_datadir:/root/.bitcoin
       - ${PWD}/cln-config:/root/.lightning/config
-      - ./plugins:/root/.lightning/plugins
+      - ./plugins:/root/plugins
     networks:
       - dev-net
     platform: linux/amd64
     command: --network=signet
+
 
 volumes:
   bitcoin_datadir:

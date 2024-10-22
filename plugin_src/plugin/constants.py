@@ -27,7 +27,7 @@ import os
 import json
 from typing import Sequence, Tuple, Mapping, Type
 
-from .util import inv_dict, all_subclasses
+from .utils import inv_dict, all_subclasses
 
 
 def read_json(filename, default):

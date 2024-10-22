@@ -1,15 +1,15 @@
 import time
-from typing import TYPE_CHECKING, List, Optional, Union, Dict, Any, Sequence
+from typing import List, Optional, Union, Dict, Any, Sequence
 
 import attr
 
 # from .json_db import StoredObject, stored_in
 # from .i18n import _
-from .util import age, InvoiceError, format_satoshis
+from .utils import age, InvoiceError, format_satoshis
 # from .bip21 import create_bip21_uri
 # from .lnutil import hex_to_bytes
 from .lnaddr import lndecode, LnAddr
-from bitcoin import COIN, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
+from .bitcoin import COIN, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
 from .transaction import PartialTxOutput
 from .crypto import sha256d
 

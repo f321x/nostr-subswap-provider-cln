@@ -25,17 +25,11 @@
 import os
 # import threading
 import stat
-import hashlib
 import base64
-import zlib
 from enum import IntEnum
-from typing import Optional
 
-import electrum_ecc as ecc
-
-from . import crypto
-from .util import (profiler, InvalidPassword, WalletFileException, bfh, standardize_path,
-                   test_read_write_permissions, os_chmod)
+from .utils import (WalletFileException, standardize_path,
+                    test_read_write_permissions, os_chmod)
 
 from .simple_logger import Logger
 

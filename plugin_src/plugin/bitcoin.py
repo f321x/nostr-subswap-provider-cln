@@ -23,16 +23,14 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import hashlib
 from typing import  Tuple, Optional, Union, Sequence
 import enum
 from enum import IntEnum, Enum
 
 import electrum_ecc as ecc
 
-from .util import bfh, BitcoinException, assert_bytes, to_bytes, inv_dict, is_hex_str, classproperty
-from . import segwit_addr
-from . import constants
+from .utils import bfh, BitcoinException, assert_bytes, to_bytes, inv_dict, is_hex_str, classproperty
+from . import constants, segwit_addr
 from .crypto import sha256d, sha256, hash_160
 
 

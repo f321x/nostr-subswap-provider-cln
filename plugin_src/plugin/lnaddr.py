@@ -7,17 +7,16 @@ import time
 from hashlib import sha256
 from binascii import hexlify
 from decimal import Decimal
-from typing import Optional, TYPE_CHECKING, Type, Dict, Any, Sequence, Tuple
+from typing import Optional, Type, Dict, Any, Sequence, Tuple
 import random
 
 import electrum_ecc as ecc
 
-from bitcoin import hash160_to_b58_address, b58_address_to_hash160, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
+from .bitcoin import hash160_to_b58_address, b58_address_to_hash160, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
 from .segwit_addr import bech32_encode, bech32_decode, CHARSET, CHARSET_INVERSE, convertbits
-from . import segwit_addr
-from . import constants
+from . import constants, segwit_addr
 from .constants import AbstractNet
-from bitcoin import COIN
+from .bitcoin import COIN
 
 # if TYPE_CHECKING:
 #     from .lnutil import LnFeatures
