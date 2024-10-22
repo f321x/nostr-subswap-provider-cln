@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Core Lightning submarine swap provider plugin using the Electrum Nostr submarine swap protocol"""
+"""
+Core Lightning submarine swap provider plugin using the Electrum Nostr submarine swap protocol.
+cp plugin_src/* in the CLN plugin dir, or set plugin=/path/to/swap-provider.py in the CLN config to run.
+"""
 
 from plugin.cln_plugin import CLNPlugin
 from plugin.cln_chain import CLNChainWallet
