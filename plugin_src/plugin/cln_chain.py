@@ -1,14 +1,17 @@
+import logging
+import math
 from pyln.client import RpcError
 from .cln_plugin import CLNPlugin
 from .plugin_config import PluginConfig
 from .transaction import PartialTxOutput, PartialTransaction, Transaction
+from .utils import call_blocking_with_timeout
 
 
 class CLNChainWallet:
     def __init__(self, *, plugin: CLNPlugin, config: PluginConfig):
         self.cln = plugin
         self.config = config
-        # self.logger = config.logger
+        self.logger = logging.getLogger(__name__)
         pass
 
     def create_transaction(self, *, outputs: [PartialTxOutput], rbf: bool) -> PartialTransaction:
@@ -23,20 +26,26 @@ class CLNChainWallet:
             raise TxBroadcastError(e) from e
 
 
-    def get_chain_fee(self, *, size_vbyte: int) -> int:
-        """Uses CLN lightning-feerates to get required fee for given size"""
+    async def get_chain_fee(self, *, size_vbyte: int) -> int:
+        """Uses CLN lightning-feerates to get required fee for given size. Fees are very conservative due to bitcoin core
+        fee estimation algorithm."""
         speed_target_blocks = self.config.confirmation_speed_target_blocks
         try:
-            # ret val: {'warning_missing_feerates': 'Some fee estimates unavailable: bitcoind startup?',
-            # 'perkb': {'min_acceptable': 1012, 'max_acceptable': 4294967295, 'floor': 1012, 'estimates': []}}
-            feerates = self.cln.plugin.rpc.feerates("perkb")['perkb']['estimates']  # call should not take too long to pollute the async rt
-        except RpcError as e:
-            raise Exception(f"Error getting feerates from CLN rpc: {e}") from e
-        feerate_pervb = None
-        for feerate in feerates:  # get feerate closest to target feerate
-            if feerate['blocks'] <= speed_target_blocks:
-                feerate_pervb = feerate['feerate'] / 1000
-        return feerates
+            feerates = await call_blocking_with_timeout(self.cln.plugin.rpc.feerates, "perkb", timeout=5)
+            feerates = feerates['perkb']['estimates']
+        except (RpcError, TimeoutError) as e:
+            feerates = []
+            self.logger.error("get_chain_fee failed to call feerates rpc: %s. Using fallback feerate", e)
+
+        prev_blockcount, feerate_pervb = 0, None
+        for feerate in feerates:  # get feerate closest to confirmation target
+            if speed_target_blocks >= feerate['blockcount'] > prev_blockcount:
+                prev_blockcount = feerate['blockcount']
+                feerate_pervb = feerate['smoothed_feerate'] / 1000
+        if feerate_pervb is None:
+            feerate_pervb = self.config.fallback_fee_sat_per_vb
+            self.logger.warning("get_chain_fee using fallback fee rate of %s sat/vbyte", feerate_pervb)
+        return math.ceil(feerate_pervb * size_vbyte)
 
 
 class TxBroadcastError(Exception):

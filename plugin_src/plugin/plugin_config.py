@@ -11,9 +11,9 @@ class PluginConfig:
         self.nostr_keypair: Optional[Keypair] = None
         self.nostr_relays: Optional[Relay] = None
         self.swapserver_fee_millionths = None
-        self.confirmation_speed_target_blocks = None
+        self.confirmation_speed_target_blocks = 10
         self.fallback_fee_sat_per_vb = 60
-        self.log_level = "DEBUG"
+        self.log_level = "INFO"
         pass
 
     def load_from_env(self) -> 'PluginConfig':
