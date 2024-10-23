@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 from typing import Optional, Dict
 
 import attr
@@ -165,7 +164,7 @@ class SwapManager:
 
     def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning',
                  db: 'JsonDB', plugin_config: 'PluginConfig'):
-        self.logger = logging.getLogger(__name__)
+        self.logger = plugin_config.logger
         self.normal_fee = None
         self.lockup_fee = None
         self.claim_fee = None  # part of the boltz prococol, not used by Electrum
@@ -1279,7 +1278,7 @@ class NostrTransport:  # (Logger):
     NOSTR_EVENT_VERSION = 1
 
     def __init__(self, *, config, sm):
-        self.logger = logging.getLogger("NostrTransport")
+        self.logger = config.logger
         self.config = config
         # self.network = sm.network
         self.relays = config.nostr_relays

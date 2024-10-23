@@ -37,7 +37,6 @@ from enum import IntEnum
 import itertools
 import binascii
 import copy
-import logging
 
 import electrum_ecc as ecc
 
@@ -53,6 +52,7 @@ from .bitcoin import (TYPE_ADDRESS, TYPE_SCRIPT, hash_160,
                                   taproot_tweak_seckey)
 from .crypto import sha256d, sha256
 from .descriptor import Descriptor, MissingSolutionPiece, create_dummy_descriptor_from_address
+from .globals import plugin_logger as _logger
 
 # if TYPE_CHECKING:
 #     from .wallet import Abstract_Wallet
@@ -60,7 +60,6 @@ from .descriptor import Descriptor, MissingSolutionPiece, create_dummy_descripto
 #     from .simple_config import SimpleConfig
 
 
-_logger = logging.getLogger(__name__)
 DEBUG_PSBT_PARSING = False
 
 

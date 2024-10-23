@@ -1,10 +1,10 @@
-import logging
 import math
 from typing import Optional
 
 from pyln.client import RpcError
 from .cln_plugin import CLNPlugin
 from .plugin_config import PluginConfig
+from .globals import plugin_logger
 from .transaction import PartialTxOutput, PartialTransaction, Transaction
 from .utils import call_blocking_with_timeout
 
@@ -13,7 +13,7 @@ class CLNChainWallet:
     def __init__(self, *, plugin: CLNPlugin, config: PluginConfig):
         self.cln = plugin
         self.config = config
-        self.logger = logging.getLogger(__name__)
+        self.logger = plugin_logger
         pass
 
     def create_transaction(self, *, outputs_without_change: [PartialTxOutput], rbf: bool) -> Optional[PartialTransaction]:
