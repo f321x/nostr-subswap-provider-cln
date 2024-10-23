@@ -10,6 +10,7 @@ services:
       - 0.0.0.0:38332:38332
     volumes:
       - bitcoin_datadir:/root/.bitcoin
+      - ${PWD}/fill-mempool.sh:/root/fill-mempool.sh
     networks:
       - dev-net
     restart: always
