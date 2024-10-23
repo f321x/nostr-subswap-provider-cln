@@ -17,10 +17,10 @@ async def main():
     """main function starting the plugin"""
 
     # cln plugin (also initializes logging to stderr)
-    plugin = await CLNPlugin().check_running()
+    plugin = await CLNPlugin()
 
     # user config (from .env file or env)
-    user_config = PluginConfig(plugin).from_env()
+    user_config = PluginConfig.from_env(plugin)
 
     cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
     # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
