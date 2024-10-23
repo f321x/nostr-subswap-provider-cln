@@ -11,23 +11,19 @@ from plugin.plugin_config import PluginConfig
 # from plugin.storage import Storage
 # from plugin.json_db import JsonDB
 # from plugin.submarine_swaps import SwapManager
-import sys
 import asyncio
 
 async def main():
     """main function starting the plugin"""
 
-    # user config (from .env file or env)
-    user_config = PluginConfig().load_from_env()
-
     # cln plugin (also initializes logging to stderr)
     plugin = await CLNPlugin().check_running()
+
+    # user config (from .env file or env)
+    user_config = PluginConfig(plugin).from_env()
+
     cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
     # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
-
-    while True:
-        await asyncio.sleep(1)
-        print(f"PLUGIN FEERATE: {await cln_chain_wallet.get_chain_fee(size_vbyte=134)}", file=sys.stderr)
 
     # data storage
     # storage = Storage(".")  # storage path (cln .lightning dir)

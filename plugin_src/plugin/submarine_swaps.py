@@ -422,7 +422,7 @@ class SwapManager:
 
     async def get_fee(self, *, size_vb: int) -> int:
         # note: 'size' is in vbytes
-        return self.wallet.get_chain_fee(size_vbyte=size_vb)
+        return await self.wallet.get_chain_fee(size_vbyte=size_vb)
 
 
     # @classmethod
@@ -767,7 +767,7 @@ class SwapManager:
         if tx is None:
             funding_output = PartialTxOutput.from_address_and_value(swap.lockup_address, swap.onchain_amount)
             tx = self.wallet.create_transaction(
-                outputs=[funding_output],
+                outputs_without_change=[funding_output],
                 rbf=True,
             )
         else:
@@ -795,7 +795,7 @@ class SwapManager:
 #         return swap, invoice, tx
 
 #     @log_exceptions
-    async def broadcast_funding_tx(self, swap: SwapData, tx: Transaction) -> None:
+    async def broadcast_funding_tx(self, swap: SwapData, tx: PartialTransaction) -> None:
         swap.funding_txid = tx.txid()
         await self.wallet.broadcast_transaction(tx)
 #
@@ -1279,7 +1279,7 @@ class NostrTransport:  # (Logger):
     NOSTR_EVENT_VERSION = 1
 
     def __init__(self, *, config, sm):
-        self.logger = Logger("NostrTransport")
+        self.logger = logging.getLogger("NostrTransport")
         self.config = config
         # self.network = sm.network
         self.relays = config.nostr_relays
