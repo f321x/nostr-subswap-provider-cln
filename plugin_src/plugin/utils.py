@@ -32,11 +32,11 @@ import time
 from typing import Optional
 import functools
 from functools import partial
+from .globals import plugin_logger as _logger
 
 # import aiohttp
 # from aiohttp_socks import ProxyConnector, ProxyType
 import aiorpcx
-import logging
 # import certifi
 # import dns.resolver
 
@@ -48,8 +48,6 @@ import logging
 #     from .simple_config import SimpleConfig
 #     from .paymentrequest import PaymentRequest
 #
-
-_logger = logging.getLogger(__name__)
 
 bfh = bytes.fromhex
 class BitcoinException(Exception): pass

@@ -27,10 +27,10 @@ import copy
 import json
 from typing import Optional
 import jsonpatch
-import logging
 
 from .utils import WalletFileException, profiler
 from .storage import Storage
+from .globals import plugin_logger
 
 
 def modifier(func):
@@ -227,7 +227,7 @@ class JsonDB:  # (Logger):
         upgrader=None,
     ):
         # Logger.__init__(self)
-        self.logger = logging.getLogger(__name__)
+        self.logger = plugin_logger
         self.lock = threading.RLock()
         self.storage = storage
         self.encoder = encoder

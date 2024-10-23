@@ -6,7 +6,6 @@ import binascii
 import hashlib
 import struct
 from typing import List, Tuple, NamedTuple, Union, Iterable, Sequence, Optional
-import logging
 
 import electrum_ecc as ecc
 
@@ -14,9 +13,10 @@ from .utils import bfh, BitcoinException
 from . import constants
 from .crypto import hash_160, hmac_oneshot
 from .bitcoin import EncodeBase58Check, DecodeBase58Check
+from .plugin_config import PluginConfig
 
 
-_logger = logging.getLogger(__name__)
+
 BIP32_PRIME = 0x80000000
 UINT32_MAX = (1 << 32) - 1
 
