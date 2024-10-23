@@ -12,7 +12,6 @@ from plugin.plugin_config import PluginConfig
 # from plugin.json_db import JsonDB
 # from plugin.submarine_swaps import SwapManager
 import sys
-import logging
 import asyncio
 
 async def main():
@@ -20,13 +19,12 @@ async def main():
 
     # user config (from .env file or env)
     user_config = PluginConfig().load_from_env()
-    logging.basicConfig(level=user_config.log_level,
-                        format="%(asctime)s - %(levelname)s - %(message)s", stream=sys.stderr)
 
-    # cln plugin
+    # cln plugin (also initializes logging to stderr)
     plugin = await CLNPlugin().check_running()
     cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
     # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
+
     while True:
         await asyncio.sleep(1)
         print(f"PLUGIN FEERATE: {await cln_chain_wallet.get_chain_fee(size_vbyte=134)}", file=sys.stderr)
