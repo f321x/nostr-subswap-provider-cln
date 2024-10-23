@@ -14,3 +14,12 @@ class CLNPlugin:
             raise Exception("Plugin not running")
         return self
 
+    def derive_secret(self, derivation_str: str) -> bytes:
+        """Derive a secret from CLN HSM secret (for use as Nostr secret)"""
+        payload = {
+            "string": derivation_str
+        }
+        secret_hex = self.plugin.rpc.call("makesecret", payload)["secret"]
+        secret_bytes = bytes.fromhex(secret_hex)
+        assert len(secret_bytes) == 32
+        return secret_bytes

@@ -1,5 +1,7 @@
 import logging
 import math
+from typing import Optional
+
 from pyln.client import RpcError
 from .cln_plugin import CLNPlugin
 from .plugin_config import PluginConfig
@@ -14,14 +16,50 @@ class CLNChainWallet:
         self.logger = logging.getLogger(__name__)
         pass
 
-    def create_transaction(self, *, outputs: [PartialTxOutput], rbf: bool) -> PartialTransaction:
-        pass
+    def create_transaction(self, *, outputs_without_change: [PartialTxOutput], rbf: bool) -> Optional[PartialTransaction]:
+        """Assembles a signed PSBT spending to the passed outputs from the CLN wallet. Automatically adds change output."""
+        output_sum_sat: int = int(sum([o.value for o in outputs_without_change]))
+        tx_core_weight = 42
+        spk_weights: int = sum([(len(o.scriptpubkey) + 9) * 4 for o in outputs_without_change])
+        startweight: int = tx_core_weight + spk_weights  # weight of the tx without any inputs (required for CLN)
+        # get inpts from CLN wallet using fundpsbt rpc call
+        try:
+            fundpsbt_response = self.cln.plugin.rpc.fundpsbt(satoshi=output_sum_sat,
+                                                            feerate=self.config.cln_feerate_str,
+                                                            startweight=startweight,
+                                                            minconf=None,
+                                                            reserve=6,
+                                                            excess_as_change=True)
+            raw_inputs_only_psbt = fundpsbt_response['psbt']
+        except Exception as e:
+            self.logger.error("create_transaction failed to call fundpsbt rpc: %s", e)
+            return None
 
-    async def broadcast_transaction(self, signed_tx: Transaction) -> None:
-        psbt = PartialTransaction().from_tx(signed_tx)._serialize_as_base64()
+        # add outputs to inputs_only_psbt
+        complete_psbt = PartialTransaction().from_raw_psbt(raw_inputs_only_psbt)
+        complete_psbt.add_outputs(outputs_without_change)
+        complete_psbt.set_rbf(rbf)
+        complete_psbt_b64 = complete_psbt._serialize_as_base64()
+
+        # sign psbt using CLN rpc call
+        try:
+           signed_psbt = self.cln.plugin.rpc.signpsbt(complete_psbt_b64)["signed_psbt"]
+        except Exception as e:
+            self.logger.error("create_transaction failed to call signpsbt rpc: %s", e)
+            return None
+
+        signed_psbt = PartialTransaction().from_raw_psbt(signed_psbt)
+        signed_psbt.finalize_psbt()
+
+        return signed_psbt
+
+
+    async def broadcast_transaction(self, signed_psbt: PartialTransaction) -> None:
+        """Broadcasts a signed transaction to the bitcoin network."""
+        # psbt = PartialTransaction().from_tx(signed_tx)._serialize_as_base64()
         # broadcast psbt
         try:
-            self.cln.plugin.rpc.sendpsbt(psbt)
+            self.cln.plugin.rpc.sendpsbt(signed_psbt._serialize_as_base64())
         except RpcError as e:
             raise TxBroadcastError(e) from e
 
