@@ -1,26 +1,69 @@
+from re import split
+from venv import logger
+
 import attr
+import os
+
+import dotenv
+from dotenv import load_dotenv
 from .lnutil import hex_to_bytes, bytes_to_hex
 from .json_db import StoredObject
-from typing import Optional
 from electrum_aionostr import Relay
 from .cln_plugin import CLNPlugin
 import electrum_ecc as ecc
-
+import logging
 
 class PluginConfig:
+    logger = logging.getLogger(__name__)
+
     """Simple configuration class for swap server, without electrum specific code"""
     def __init__(self, plugin: CLNPlugin):
         self.nostr_keypair = Keypair.from_private_key(plugin.derive_secret("NOSTRSECRET"))
 
-        self.nostr_relays: Optional[Relay] = None
-        self.swapserver_fee_millionths = None
-        self.confirmation_speed_target_blocks = 10
-        self.fallback_fee_sat_per_vb = 60
+        self.nostr_relays: [Relay] = None
+        self.swapserver_fee_millionths: int = 10_000
+        self.confirmation_speed_target_blocks: int = 10
+        self.fallback_fee_sat_per_vb:int = 60
         self.log_level = "INFO"
 
-    def from_env(self) -> 'PluginConfig':
-        """todo: Load configuration from .env file or environment variables"""
-        return self
+    @classmethod
+    def from_env(cls, plugin: CLNPlugin) -> 'PluginConfig':
+        """Load configuration from .env file or environment variables"""
+        load_dotenv()
+        config = PluginConfig(plugin)
+
+        if relays := os.getenv("NOSTR_RELAYS"):
+            config.nostr_relays.extend(Relay(url=url.strip()) for url in relays.split(","))
+        else:
+            raise Exception("No Nostr relays found. Set NOSTR_RELAYS as csv in env.")
+
+        if fee_str := os.getenv("SWAP_FEE_PPM"):
+            config.swapserver_fee_millionths = int(fee_str.strip())
+        else:
+            logger.warning(f"No swap fee in env. Using default value: {config.swapserver_fee_millionths}")
+
+        if block_target := os.getenv("CONFIRMATION_TARGET_BLOCKS"):
+            block_target = int(block_target.strip())
+            if not 0 < block_target < 200:
+               raise Exception("Invalid Block target. Use value between 0 and 200")
+            config.confirmation_speed_target_blocks = block_target
+        else:
+            logger.warning(f"No CONFIRMATON_TARGET_BLOCKS found in env. "
+                           f"Using default of {config.confirmation_speed_target_blocks}")
+
+        if fallback_fee := os.getenv("FALLBACK_FEE_SATVB"):
+            fallback_fee = int(fallback_fee.strip())
+            if not 10 <= fallback_fee <= 300:
+                raise Exception("FALLBACK_FEE_SATSVB is out of allowed range [10;300] ")
+            else:
+                config.fallback_fee_sat_per_vb = fallback_fee
+        else:
+            logger.warning(f"No FALLBACK_FEE_SATSVB set in env. Using default of {config.fallback_fee_sat_per_vb}")
+
+        if log_level := os.getenv("PLUGIN_LOG_LEVEL"):
+            config.log_level = log_level.strip()
+
+        return config
 
     @property
     def cln_feerate_str(self) -> str:
