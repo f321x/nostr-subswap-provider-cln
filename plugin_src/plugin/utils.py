@@ -65,6 +65,8 @@ def all_subclasses(cls) -> Set:
         res |= all_subclasses(sub)
     return res
 
+async def call_blocking_with_timeout(func, *args, timeout: int) -> Any:
+    return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=timeout)
 
 # ca_path = certifi.where()
 #
