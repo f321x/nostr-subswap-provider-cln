@@ -9,6 +9,7 @@ import asyncio
 import sys
 from plugin.cln_plugin import CLNPlugin
 from plugin.cln_chain import CLNChainWallet
+from plugin.cln_lightning import CLNLightning
 from plugin.plugin_config import PluginConfig
 # from plugin.storage import Storage
 # from plugin.json_db import JsonDB
@@ -25,7 +26,7 @@ async def main():
         user_config = PluginConfig.from_env(plugin)
 
         cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
-        # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
+        cln_lightning = CLNLightning(plugin=plugin, config=user_config)
 
 
         # data storage
