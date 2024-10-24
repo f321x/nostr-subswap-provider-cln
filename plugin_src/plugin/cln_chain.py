@@ -22,17 +22,18 @@ class CLNChainWallet:
         spk_weights: int = sum([(len(o.scriptpubkey) + 9) * 4 for o in outputs_without_change])
         startweight: int = tx_core_weight + spk_weights  # weight of the tx without any inputs (required for CLN)
         # get inpts from CLN wallet using fundpsbt rpc call
-        try:
-            fundpsbt_response = self.cln.plugin.rpc.fundpsbt(satoshi=output_sum_sat,
-                                                            feerate=self.config.cln_feerate_str,
-                                                            startweight=startweight,
-                                                            minconf=None,
-                                                            reserve=6,
-                                                            excess_as_change=True)
-            raw_inputs_only_psbt = fundpsbt_response['psbt']
-        except Exception as e:
-            self.logger.error("create_transaction failed to call fundpsbt rpc: %s", e)
-            return None
+        async with self.cln.stdinout_mutex:
+            try:
+                fundpsbt_response = self.cln.plugin.rpc.fundpsbt(satoshi=output_sum_sat,
+                                                                feerate=self.config.cln_feerate_str,
+                                                                startweight=startweight,
+                                                                minconf=None,
+                                                                reserve=6,
+                                                                excess_as_change=True)
+                raw_inputs_only_psbt = fundpsbt_response['psbt']
+            except Exception as e:
+                self.logger.error("create_transaction failed to call fundpsbt rpc: %s", e)
+                return None
 
         # add outputs to inputs_only_psbt
         complete_psbt = PartialTransaction().from_raw_psbt(raw_inputs_only_psbt)
@@ -41,11 +42,12 @@ class CLNChainWallet:
         complete_psbt_b64 = complete_psbt._serialize_as_base64()
 
         # sign psbt using CLN rpc call
-        try:
-           signed_psbt = self.cln.plugin.rpc.signpsbt(complete_psbt_b64)["signed_psbt"]
-        except Exception as e:
-            self.logger.error("create_transaction failed to call signpsbt rpc: %s", e)
-            return None
+        async with self.cln.stdinout_mutex:
+            try:
+               signed_psbt = self.cln.plugin.rpc.signpsbt(complete_psbt_b64)["signed_psbt"]
+            except Exception as e:
+                self.logger.error("create_transaction failed to call signpsbt rpc: %s", e)
+                return None
 
         signed_psbt = PartialTransaction().from_raw_psbt(signed_psbt)
         signed_psbt.finalize_psbt()
@@ -57,22 +59,24 @@ class CLNChainWallet:
         """Broadcasts a signed transaction to the bitcoin network."""
         # psbt = PartialTransaction().from_tx(signed_tx)._serialize_as_base64()
         # broadcast psbt
-        try:
-            self.cln.plugin.rpc.sendpsbt(signed_psbt._serialize_as_base64())
-        except RpcError as e:
-            raise TxBroadcastError(e) from e
+        async with self.cln.stdinout_mutex:
+            try:
+                self.cln.plugin.rpc.sendpsbt(signed_psbt._serialize_as_base64())
+            except RpcError as e:
+                raise TxBroadcastError(e) from e
 
 
     async def get_chain_fee(self, *, size_vbyte: int) -> int:
         """Uses CLN lightning-feerates to get required fee for given size. Fees are very conservative due to bitcoin core
         fee estimation algorithm."""
         speed_target_blocks = self.config.confirmation_speed_target_blocks
-        try:
-            feerates = await call_blocking_with_timeout(self.cln.plugin.rpc.feerates, "perkb", timeout=5)
-            feerates = feerates['perkb']['estimates']
-        except (RpcError, TimeoutError) as e:
-            feerates = []
-            self.logger.error("get_chain_fee failed to call feerates rpc: %s. Using fallback feerate", e)
+        async with self.cln.stdinout_mutex:
+            try:
+                feerates = await call_blocking_with_timeout(self.cln.plugin.rpc.feerates, "perkb", timeout=5)
+                feerates = feerates['perkb']['estimates']
+            except (RpcError, TimeoutError) as e:
+                feerates = []
+                self.logger.error("get_chain_fee failed to call feerates rpc: %s. Using fallback feerate", e)
 
         prev_blockcount, feerate_pervb = 0, None
         for feerate in feerates:  # get feerate closest to confirmation target

@@ -6,6 +6,7 @@ class CLNPlugin:
     def __init__(self):
         self.plugin = Plugin()
         # register additional methods in between
+        self.stdinout_mutex = asyncio.Lock()  # protect stdinout from concurrent access so different rpc calls dont interfere
         self.thread = asyncio.to_thread(self.plugin.run)  # the plugin is blocking to read stdin so we run it in a thread
 
 
