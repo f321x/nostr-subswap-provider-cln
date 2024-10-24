@@ -1,20 +1,19 @@
 import asyncio
-from decimal import Decimal
-
 import attr
 import json
 import os
 import math
 from decimal import Decimal
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple, Sequence
 import electrum_aionostr as aionostr
 from electrum_ecc import ECPrivkey
 from electrum_aionostr.util import to_nip19
 from collections import defaultdict
-from .bitcoin import opcodes
+from .bitcoin import opcodes, dust_threshold, construct_script, script_to_p2wsh
 from .transaction import PartialTxOutput, PartialTransaction, Transaction, TxOutpoint, OPPushDataGeneric, OPPushDataPubkey
 from .utils import OldTaskGroup, now
 from .bitcoin import DummyAddress
+from .crypto import ripemd
 from .lnutil import hex_to_bytes
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants, lnutil
@@ -403,9 +402,9 @@ class SwapManager:
 #                     await self.network.broadcast_transaction(tx)
 #                 except TxBroadcastError:
 #                     self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
-#
-#     def get_claim_fee(self):
-#         return self.get_fee(CLAIM_FEE_SIZE)
+
+    async def get_claim_fee(self):
+        return await self.get_fee(size_vb=CLAIM_FEE_SIZE)
 
     async def get_fee(self, *, size_vb: int) -> int:
         # note: 'size' is in vbytes
@@ -456,7 +455,7 @@ class SwapManager:
             WITNESS_TEMPLATE_REVERSE_SWAP,
             {1:32, 5:ripemd(payment_hash), 7:their_pubkey, 10:locktime, 13:our_pubkey}
         )
-        swap, invoice, prepay_invoice = self.add_normal_swap(
+        swap, invoice, prepay_invoice = await self.add_normal_swap(
             redeem_script=redeem_script,
             locktime=locktime,
             onchain_amount_sat=onchain_amount_sat,
@@ -465,80 +464,80 @@ class SwapManager:
             our_privkey=our_privkey,
             prepay=True,
         )
-        self.lnworker.register_hold_invoice(payment_hash, self.hold_invoice_callback)
+        self.lnworker.register_hold_invoice(payment_hash=payment_hash, callback=self.hold_invoice_callback)
         return swap, invoice, prepay_invoice
 
 
-#     def add_normal_swap(
-#             self, *,
-#             redeem_script: bytes,
-#             locktime: int,  # onchain
-#             onchain_amount_sat: int,
-#             lightning_amount_sat: int,
-#             payment_hash: bytes,
-#             our_privkey: bytes,
-#             prepay: bool,
-#             channels: Optional[Sequence['Channel']] = None,
-#             min_final_cltv_expiry_delta: Optional[int] = None,
-#     ) -> Tuple[SwapData, str, Optional[str]]:
-#         """creates a hold invoice"""
-#         if prepay:
-#             prepay_amount_sat = self.get_claim_fee() * 2
-#             invoice_amount_sat = lightning_amount_sat - prepay_amount_sat
-#         else:
-#             invoice_amount_sat = lightning_amount_sat
-#
-#         _, invoice = self.lnworker.get_bolt11_invoice(
-#             payment_hash=payment_hash,
-#             amount_msat=invoice_amount_sat * 1000,
-#             message='Submarine swap',
-#             expiry=300,
-#             fallback_address=None,
-#             channels=channels,
-#             min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
-#         )
-#         # add payment info to lnworker
-#         self.lnworker.add_payment_info_for_hold_invoice(payment_hash, invoice_amount_sat)
-#
-#         if prepay:
-#             prepay_hash = self.lnworker.create_payment_info(amount_msat=prepay_amount_sat*1000)
-#             _, prepay_invoice = self.lnworker.get_bolt11_invoice(
-#                 payment_hash=prepay_hash,
-#                 amount_msat=prepay_amount_sat * 1000,
-#                 message='Submarine swap mining fees',
-#                 expiry=300,
-#                 fallback_address=None,
-#                 channels=channels,
-#                 min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
-#             )
-#             self.lnworker.bundle_payments([payment_hash, prepay_hash])
-#             self.prepayments[prepay_hash] = payment_hash
-#         else:
-#             prepay_invoice = None
-#             prepay_hash = None
-#
-#         lockup_address = script_to_p2wsh(redeem_script)
-#         receive_address = self.wallet.get_receiving_address()
-#         swap = SwapData(
-#             redeem_script=redeem_script,
-#             locktime = locktime,
-#             privkey = our_privkey,
-#             preimage = None,
-#             prepay_hash = prepay_hash,
-#             lockup_address = lockup_address,
-#             onchain_amount = onchain_amount_sat,
-#             receive_address = receive_address,
-#             lightning_amount = lightning_amount_sat,
-#             is_reverse = False,
-#             is_redeemed = False,
-#             funding_txid = None,
-#             spending_txid = None,
-#         )
-#         swap._payment_hash = payment_hash
-#         self._add_or_reindex_swap(swap)
-#         self.add_lnwatcher_callback(swap)
-#         return swap, invoice, prepay_invoice
-#
+    async def add_normal_swap(
+            self, *,
+            redeem_script: bytes,
+            locktime: int,  # onchain
+            onchain_amount_sat: int,
+            lightning_amount_sat: int,
+            payment_hash: bytes,
+            our_privkey: bytes,
+            prepay: bool,
+            channels: Optional[Sequence['Channel']] = None,
+            min_final_cltv_expiry_delta: Optional[int] = None,
+    ) -> Tuple[SwapData, str, Optional[str]]:
+        """creates a hold invoice"""
+        if prepay:
+            prepay_amount_sat = await self.get_claim_fee() * 2
+            invoice_amount_sat = lightning_amount_sat - prepay_amount_sat
+        else:
+            invoice_amount_sat = lightning_amount_sat
+
+        _, invoice = self.lnworker.get_bolt11_invoice(
+            payment_hash=payment_hash,
+            amount_msat=invoice_amount_sat * 1000,
+            message='Submarine swap',
+            expiry=300,
+            fallback_address=None,
+            channels=channels,
+            min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
+        )
+        # add payment info to lnworker
+        self.lnworker.add_payment_info_for_hold_invoice(payment_hash, invoice_amount_sat)
+
+        if prepay:
+            prepay_hash = self.lnworker.create_payment_info(amount_msat=prepay_amount_sat*1000)
+            _, prepay_invoice = self.lnworker.get_bolt11_invoice(
+                payment_hash=prepay_hash,
+                amount_msat=prepay_amount_sat * 1000,
+                message='Submarine swap mining fees',
+                expiry=300,
+                fallback_address=None,
+                channels=channels,
+                min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
+            )
+            self.lnworker.bundle_payments([payment_hash, prepay_hash])
+            self.prepayments[prepay_hash] = payment_hash
+        else:
+            prepay_invoice = None
+            prepay_hash = None
+
+        lockup_address = script_to_p2wsh(redeem_script)
+        receive_address = self.wallet.get_receiving_address()
+        swap = SwapData(
+            redeem_script=redeem_script,
+            locktime = locktime,
+            privkey = our_privkey,
+            preimage = None,
+            prepay_hash = prepay_hash,
+            lockup_address = lockup_address,
+            onchain_amount = onchain_amount_sat,
+            receive_address = receive_address,
+            lightning_amount = lightning_amount_sat,
+            is_reverse = False,
+            is_redeemed = False,
+            funding_txid = None,
+            spending_txid = None,
+        )
+        swap._payment_hash = payment_hash
+        self._add_or_reindex_swap(swap)
+        self.add_lnwatcher_callback(swap)
+        return swap, invoice, prepay_invoice
+
 #     def create_reverse_swap(self, *, lightning_amount_sat: int, their_pubkey: bytes) -> SwapData:
 #         """ server method. """
 #         assert lightning_amount_sat is not None
@@ -910,15 +909,15 @@ class SwapManager:
 #         self._min_amount = pairs.min_amount
 #         self._max_amount = pairs.max_amount
 #         self.is_initialized.set()
-#
-#     def get_max_amount(self):
-#         return self._max_amount
-#
-#     def get_min_amount(self):
-#         return self._min_amount
-#
-#     def check_invoice_amount(self, x):
-#         return x >= self.get_min_amount() and x <= self.get_max_amount()
+
+    def get_max_amount(self):
+        return self._max_amount
+
+    def get_min_amount(self):
+        return self._min_amount
+
+    def check_invoice_amount(self, x):
+        return self.get_min_amount() <= x <= self.get_max_amount()
 
     def _get_recv_amount(self, send_amount: Optional[int], *, is_reverse: bool) -> Optional[int]:
         """For a given swap direction and amount we send, returns how much we will receive.
