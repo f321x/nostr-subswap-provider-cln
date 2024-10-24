@@ -58,6 +58,7 @@ class PluginConfig:
         if log_level := os.getenv("PLUGIN_LOG_LEVEL"):
             config.logger = PluginLogger("swap-provider", plugin, level=log_level.strip())
 
+        config.logger.debug(f"Loaded configuration: {config}")
         return config
 
     @property
@@ -69,6 +70,14 @@ class PluginConfig:
         else:
             feerate = "slow"
         return feerate
+
+    def __str__(self):
+        relays = [relay.url for relay in self.nostr_relays]
+        return f"nostr_pubkey={self.nostr_keypair.pubkey.hex()}, " \
+               f"nostr_relays={relays}, " \
+               f"swapserver_fee_millionths={self.swapserver_fee_millionths}, " \
+               f"confirmation_speed_target_blocks={self.confirmation_speed_target_blocks}, " \
+               f"fallback_fee_sat_per_vb={self.fallback_fee_sat_per_vb})"
 
 
 @attr.s

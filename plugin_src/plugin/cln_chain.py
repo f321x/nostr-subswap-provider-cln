@@ -13,6 +13,7 @@ class CLNChainWallet:
         self.cln = plugin
         self.config = config
         self.logger = get_plugin_logger()
+        self.logger.debug("CLNChainWallet initialized")
 
     def create_transaction(self, *, outputs_without_change: [PartialTxOutput], rbf: bool) -> Optional[PartialTransaction]:
         """Assembles a signed PSBT spending to the passed outputs from the CLN wallet. Automatically adds change output."""
