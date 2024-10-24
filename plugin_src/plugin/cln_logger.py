@@ -19,7 +19,7 @@ class PluginLogger:
         """Implement a log queue to have simple, sync log calls but still be able to use thes shared stdinout mutex"""
         while True:
             while not self.log_queue.empty():
-                msg = self.log_queue.get()
+                msg = await self.log_queue.get()
                 async with self.stdinout_mutex:
                     self.logger(msg, level="info")
             await asyncio.sleep(0.1)

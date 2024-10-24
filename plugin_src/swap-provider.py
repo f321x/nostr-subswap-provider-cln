@@ -29,7 +29,6 @@ async def main():
         cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
         cln_lightning = CLNLightning(plugin=plugin, config=user_config)
 
-
         # data storage
         # storage = Storage(".")  # storage path (cln .lightning dir)
         # json_db = JsonDB(storage.read(), storage=storage)

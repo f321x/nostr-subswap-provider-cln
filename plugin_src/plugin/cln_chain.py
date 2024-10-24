@@ -15,7 +15,7 @@ class CLNChainWallet:
         self.logger = get_plugin_logger()
         self.logger.debug("CLNChainWallet initialized")
 
-    def create_transaction(self, *, outputs_without_change: [PartialTxOutput], rbf: bool) -> Optional[PartialTransaction]:
+    async def create_transaction(self, *, outputs_without_change: [PartialTxOutput], rbf: bool) -> Optional[PartialTransaction]:
         """Assembles a signed PSBT spending to the passed outputs from the CLN wallet. Automatically adds change output."""
         output_sum_sat: int = int(sum([o.value for o in outputs_without_change]))
         tx_core_weight = 42
