@@ -1,6 +1,5 @@
 import attr
 import os
-import sys
 import electrum_ecc as ecc
 from electrum_aionostr import Relay
 from dotenv import load_dotenv
@@ -20,7 +19,6 @@ class PluginConfig:
         self.confirmation_speed_target_blocks: int = 10
         self.fallback_fee_sat_per_vb:int = 60
         self.logger = PluginLogger("swap-provider", plugin, level="DEBUG")
-        self.logger.debug("Plugin logger initiated")
 
 
     @classmethod

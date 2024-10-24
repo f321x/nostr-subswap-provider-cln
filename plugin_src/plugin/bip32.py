@@ -13,10 +13,11 @@ from .utils import bfh, BitcoinException
 from . import constants
 from .crypto import hash_160, hmac_oneshot
 from .bitcoin import EncodeBase58Check, DecodeBase58Check
-from .plugin_config import PluginConfig
+from .globals import get_plugin_logger
 
 
 
+_logger = get_plugin_logger()
 BIP32_PRIME = 0x80000000
 UINT32_MAX = (1 << 32) - 1
 

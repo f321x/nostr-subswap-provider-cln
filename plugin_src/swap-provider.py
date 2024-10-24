@@ -4,18 +4,15 @@ Core Lightning submarine swap provider plugin using the Electrum Nostr submarine
 To run install requirements (pip install -r requirements.txt), then
 cp plugin_src/* in the CLN plugin dir, or set plugin=/path/to/swap-provider.py in the CLN config to run.
 """
-import sys
 
+import asyncio
+import sys
 from plugin.cln_plugin import CLNPlugin
 from plugin.cln_chain import CLNChainWallet
 from plugin.plugin_config import PluginConfig
-from plugin.globals import set_plugin_logger
 # from plugin.storage import Storage
 # from plugin.json_db import JsonDB
 # from plugin.submarine_swaps import SwapManager
-import asyncio
-
-from plugin.globals import get_plugin_logger
 
 
 async def main():
@@ -26,15 +23,6 @@ async def main():
 
         # user config (from .env file or env)
         user_config = PluginConfig.from_env(plugin)
-        set_plugin_logger(user_config.logger)  # makes the plugin logger available globally
-
-        while True:
-            logger = get_plugin_logger()
-            logger.info("denug")
-            await asyncio.sleep(1)
-            logger.debug("Hello, world!")
-            await asyncio.sleep(1)
-            # plugin.plugin.log("Hello, world2!", level="INFO")
 
         cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
         # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
