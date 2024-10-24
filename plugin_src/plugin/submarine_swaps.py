@@ -1,14 +1,16 @@
 import asyncio
-import json
-from typing import Optional, Dict
+from decimal import Decimal
 
 import attr
-
+import json
+import os
+import math
+from decimal import Decimal
+from typing import Optional, Dict
 import electrum_aionostr as aionostr
+from electrum_ecc import ECPrivkey
 from electrum_aionostr.util import to_nip19
-
 from collections import defaultdict
-
 from .bitcoin import opcodes
 from .transaction import PartialTxOutput, PartialTransaction, Transaction, TxOutpoint, OPPushDataGeneric, OPPushDataPubkey
 from .utils import OldTaskGroup, now
@@ -21,20 +23,6 @@ from .cln_lightning import CLNLightning
 from .plugin_config import PluginConfig
 
 # from .address_synchronizer import TX_HEIGHT_LOCAL
-# from .i18n import _
-
-# from .lnonion import OnionRoutingFailure, OnionFailureCode
-
-
-# if TYPE_CHECKING:
-#     from .network import Network
-#     from .wallet import Abstract_Wallet
-#     from .lnwatcher import LNWalletWatcher
-#     from .lnworker import LNWallet
-#     from .lnchannel import Channel
-#     from .plugin_config import SimpleConfig
-
-
 
 CLAIM_FEE_SIZE = 136
 LOCKUP_FEE_SIZE = 153 # assuming 1 output, 2 outputs
@@ -187,7 +175,7 @@ class SwapManager:
             swap._payment_hash = payment_hash
             self._add_or_reindex_swap(swap)
             if not swap.is_reverse and not swap.is_redeemed:
-                self.lnworker.register_hold_invoice(payment_hash, self.hold_invoice_callback)
+                self.lnworker.register_hold_invoice(payment_hash=payment_hash, callback=self.hold_invoice_callback)
 
         self.prepayments = {}  # type: Dict[bytes, bytes] # fee_rhash -> rhash
         for k, swap in self.swaps.items():
@@ -275,7 +263,7 @@ class SwapManager:
                 await self.taskgroup.spawn(self.pay_invoice(key))
                 # todo: here
 
-    #     def cancel_normal_swap(self, swap: SwapData):
+ #     def cancel_normal_swap(self, swap: SwapData):
 #         """ we must not have broadcast the funding tx """
 #         if swap is None:
 #             return
@@ -456,29 +444,31 @@ class SwapManager:
                 #     continue
                 # break
 
-#     def create_normal_swap(self, *, lightning_amount_sat: int, payment_hash: bytes, their_pubkey: bytes = None):
-#         """ server method """
-#         assert lightning_amount_sat
-#         locktime = self.network.get_local_height() + LOCKTIME_DELTA_REFUND
-#         our_privkey = os.urandom(32)
-#         our_pubkey = ECPrivkey(our_privkey).get_public_key_bytes(compressed=True)
-#         onchain_amount_sat = self._get_recv_amount(lightning_amount_sat, is_reverse=True) # what the client is going to receive
-#         redeem_script = construct_script(
-#             WITNESS_TEMPLATE_REVERSE_SWAP,
-#             {1:32, 5:ripemd(payment_hash), 7:their_pubkey, 10:locktime, 13:our_pubkey}
-#         )
-#         swap, invoice, prepay_invoice = self.add_normal_swap(
-#             redeem_script=redeem_script,
-#             locktime=locktime,
-#             onchain_amount_sat=onchain_amount_sat,
-#             lightning_amount_sat=lightning_amount_sat,
-#             payment_hash=payment_hash,
-#             our_privkey=our_privkey,
-#             prepay=True,
-#         )
-#         self.lnworker.register_hold_invoice(payment_hash, self.hold_invoice_callback)
-#         return swap, invoice, prepay_invoice
-#
+
+    async def create_normal_swap(self, *, lightning_amount_sat: int, payment_hash: bytes, their_pubkey: bytes = None):
+        """ server method """
+        assert lightning_amount_sat
+        locktime = await self.wallet.get_local_height() + LOCKTIME_DELTA_REFUND
+        our_privkey = os.urandom(32)
+        our_pubkey = ECPrivkey(our_privkey).get_public_key_bytes(compressed=True)
+        onchain_amount_sat = self._get_recv_amount(lightning_amount_sat, is_reverse=True) # what the client is going to receive
+        redeem_script = construct_script(
+            WITNESS_TEMPLATE_REVERSE_SWAP,
+            {1:32, 5:ripemd(payment_hash), 7:their_pubkey, 10:locktime, 13:our_pubkey}
+        )
+        swap, invoice, prepay_invoice = self.add_normal_swap(
+            redeem_script=redeem_script,
+            locktime=locktime,
+            onchain_amount_sat=onchain_amount_sat,
+            lightning_amount_sat=lightning_amount_sat,
+            payment_hash=payment_hash,
+            our_privkey=our_privkey,
+            prepay=True,
+        )
+        self.lnworker.register_hold_invoice(payment_hash, self.hold_invoice_callback)
+        return swap, invoice, prepay_invoice
+
+
 #     def add_normal_swap(
 #             self, *,
 #             redeem_script: bytes,
@@ -929,37 +919,37 @@ class SwapManager:
 #
 #     def check_invoice_amount(self, x):
 #         return x >= self.get_min_amount() and x <= self.get_max_amount()
-#
-#     def _get_recv_amount(self, send_amount: Optional[int], *, is_reverse: bool) -> Optional[int]:
-#         """For a given swap direction and amount we send, returns how much we will receive.
-#
-#         Note: in the reverse direction, the mining fee for the on-chain claim tx is NOT accounted for.
-#         In the reverse direction, the result matches what the swap server returns as response["onchainAmount"].
-#         """
-#         if send_amount is None:
-#             return
-#         x = Decimal(send_amount)
-#         percentage = Decimal(self.percentage)
-#         if is_reverse:
-#             if not self.check_invoice_amount(x):
-#                 return
-#             # see/ref:
-#             # https://github.com/BoltzExchange/boltz-backend/blob/e7e2d30f42a5bea3665b164feb85f84c64d86658/lib/service/Service.ts#L948
-#             percentage_fee = math.ceil(percentage * x / 100)
-#             base_fee = self.lockup_fee
-#             x -= percentage_fee + base_fee
-#             x = math.floor(x)
-#             if x < dust_threshold():
-#                 return
-#         else:
-#             x -= self.normal_fee
-#             percentage_fee = math.ceil(x * percentage / (100 + percentage))
-#             x -= percentage_fee
-#             if not self.check_invoice_amount(x):
-#                 return
-#         x = int(x)
-#         return x
-#
+
+    def _get_recv_amount(self, send_amount: Optional[int], *, is_reverse: bool) -> Optional[int]:
+        """For a given swap direction and amount we send, returns how much we will receive.
+
+        Note: in the reverse direction, the mining fee for the on-chain claim tx is NOT accounted for.
+        In the reverse direction, the result matches what the swap server returns as response["onchainAmount"].
+        """
+        if send_amount is None:
+            return
+        x = Decimal(send_amount)
+        percentage = Decimal(self.percentage)
+        if is_reverse:
+            if not self.check_invoice_amount(x):
+                return
+            # see/ref:
+            # https://github.com/BoltzExchange/boltz-backend/blob/e7e2d30f42a5bea3665b164feb85f84c64d86658/lib/service/Service.ts#L948
+            percentage_fee = math.ceil(percentage * x / 100)
+            base_fee = self.lockup_fee
+            x -= percentage_fee + base_fee
+            x = math.floor(x)
+            if x < dust_threshold():
+                return
+        else:
+            x -= self.normal_fee
+            percentage_fee = math.ceil(x * percentage / (100 + percentage))
+            x -= percentage_fee
+            if not self.check_invoice_amount(x):
+                return
+        x = int(x)
+        return x
+
 #     def _get_send_amount(self, recv_amount: Optional[int], *, is_reverse: bool) -> Optional[int]:
 #         """For a given swap direction and amount we want to receive, returns how much we will need to send.
 #
@@ -1126,39 +1116,39 @@ class SwapManager:
 #             "redeemScript": swap.redeem_script.hex(),
 #         }
 #         return response
-#
-#     def server_create_swap(self, request):
-#         # reverse for client, forward for server
-#         # requesting a normal swap (old protocol) will raise an exception
-#         #request = await r.json()
-#         req_type = request['type']
-#         assert request['pairId'] == 'BTC/BTC'
-#         if req_type == 'reversesubmarine':
-#             lightning_amount_sat=request['invoiceAmount']
-#             payment_hash=bytes.fromhex(request['preimageHash'])
-#             their_pubkey=bytes.fromhex(request['claimPublicKey'])
-#             assert len(payment_hash) == 32
-#             assert len(their_pubkey) == 33
-#             swap, invoice, prepay_invoice = self.create_normal_swap(
-#                 lightning_amount_sat=lightning_amount_sat,
-#                 payment_hash=payment_hash,
-#                 their_pubkey=their_pubkey
-#             )
-#             response = {
-#                 'id': payment_hash.hex(),
-#                 'invoice': invoice,
-#                 'minerFeeInvoice': prepay_invoice,
-#                 'lockupAddress': swap.lockup_address,
-#                 'redeemScript': swap.redeem_script.hex(),
-#                 'timeoutBlockHeight': swap.locktime,
-#                 "onchainAmount": swap.onchain_amount,
-#             }
-#         elif req_type == 'submarine':
-#             raise Exception('Deprecated API. Please upgrade your version of Electrum')
-#         else:
-#             raise Exception('unsupported request type:' + req_type)
-#         return response
-#
+
+    # async def server_create_swap(self, request):
+    #     # reverse for client, forward for server
+    #     # requesting a normal swap (old protocol) will raise an exception
+    #     #request = await r.json()
+    #     req_type = request['type']
+    #     assert request['pairId'] == 'BTC/BTC'
+    #     if req_type == 'reversesubmarine':
+    #         lightning_amount_sat=request['invoiceAmount']
+    #         payment_hash=bytes.fromhex(request['preimageHash'])
+    #         their_pubkey=bytes.fromhex(request['claimPublicKey'])
+    #         assert len(payment_hash) == 32
+    #         assert len(their_pubkey) == 33
+    #         swap, invoice, prepay_invoice = await self.create_normal_swap(
+    #             lightning_amount_sat=lightning_amount_sat,
+    #             payment_hash=payment_hash,
+    #             their_pubkey=their_pubkey
+    #         )
+    #         response = {
+    #             'id': payment_hash.hex(),
+    #             'invoice': invoice,
+    #             'minerFeeInvoice': prepay_invoice,
+    #             'lockupAddress': swap.lockup_address,
+    #             'redeemScript': swap.redeem_script.hex(),
+    #             'timeoutBlockHeight': swap.locktime,
+    #             "onchainAmount": swap.onchain_amount,
+    #         }
+    #     elif req_type == 'submarine':
+    #         raise Exception('Deprecated API. Please upgrade your version of Electrum')
+    #     else:
+    #         raise Exception('unsupported request type:' + req_type)
+    #     return response
+
 #     def get_groups_for_onchain_history(self):
 #         current_height = self.wallet.adb.get_local_height()
 #         d = {}
@@ -1459,7 +1449,7 @@ class NostrTransport:  # (Logger):
         if method == 'addswapinvoice':
             r = self.sm.server_add_swap_invoice(request)
         elif method == 'createswap':
-            r = self.sm.server_create_swap(request)
+            r = await self.sm.server_create_swap(request)
         elif method == 'createnormalswap':
             r = self.sm.server_create_normal_swap(request)
         else:

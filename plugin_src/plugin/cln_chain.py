@@ -66,6 +66,20 @@ class CLNChainWallet:
                 raise TxBroadcastError(e) from e
 
 
+    async def get_local_height(self) -> int:
+        """Returns the current block height of the cln backend."""
+        async with self.cln.stdinout_mutex:
+            try:
+                response = await call_blocking_with_timeout(self.cln.plugin.rpc.getinfo, timeout=5)
+            except (RpcError, TimeoutError) as e:
+                raise e
+        if 'warning_bitcoind_sync' or 'warning_lightningd_sync' or not 'blockheight' in response:
+            raise Exception(f"get_local_height: cln backend is not synced, response: {response}")
+        blockheight = response['blockheight']
+        if response['network'] == 'bitcoin':
+            assert blockheight > 860000, "get_local_height: cln backend returns invalid height"
+        return blockheight
+
     async def get_chain_fee(self, *, size_vbyte: int) -> int:
         """Uses CLN lightning-feerates to get required fee for given size. Fees are very conservative due to bitcoin core
         fee estimation algorithm."""

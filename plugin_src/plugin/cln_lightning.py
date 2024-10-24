@@ -21,6 +21,7 @@ class CLNLightning:
             except Exception as e:
                 return False, "pay_invoice call to CLN failed: " + str(e)
 
+        # check if the payment was successful, currently we assume it failed if it's not "complete"
         if 'payment_preimage' in result and result['payment_preimage'] and result['status'] == 'complete':
             return True, result['payment_preimage']
         return False, result
