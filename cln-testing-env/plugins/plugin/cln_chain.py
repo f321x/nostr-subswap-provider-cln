@@ -1,5 +1,6 @@
 import math
 from typing import Optional
+
 from pyln.client import RpcError
 from .cln_plugin import CLNPlugin
 from .plugin_config import PluginConfig
@@ -7,12 +8,15 @@ from .globals import get_plugin_logger
 from .transaction import PartialTxOutput, PartialTransaction, Transaction
 from .utils import call_blocking_with_timeout
 
+import sys
+
 
 class CLNChainWallet:
     def __init__(self, *, plugin: CLNPlugin, config: PluginConfig):
         self.cln = plugin
         self.config = config
         self.logger = get_plugin_logger()
+        self.logger.info("CLNChainWallet initialized")
 
     def create_transaction(self, *, outputs_without_change: [PartialTxOutput], rbf: bool) -> Optional[PartialTransaction]:
         """Assembles a signed PSBT spending to the passed outputs from the CLN wallet. Automatically adds change output."""

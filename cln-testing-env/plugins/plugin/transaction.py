@@ -52,14 +52,14 @@ from .bitcoin import (TYPE_ADDRESS, TYPE_SCRIPT, hash_160,
                                   taproot_tweak_seckey)
 from .crypto import sha256d, sha256
 from .descriptor import Descriptor, MissingSolutionPiece, create_dummy_descriptor_from_address
-from .globals import get_plugin_logger
+from .globals import plugin_logger as _logger
 
 # if TYPE_CHECKING:
 #     from .wallet import Abstract_Wallet
 #     from .network import Network
 #     from .simple_config import SimpleConfig
 
-_logger = get_plugin_logger()
+
 DEBUG_PSBT_PARSING = False
 
 

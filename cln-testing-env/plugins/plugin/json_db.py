@@ -30,7 +30,7 @@ import jsonpatch
 
 from .utils import WalletFileException, profiler
 from .storage import Storage
-from .globals import get_plugin_logger
+from .globals import plugin_logger
 
 
 def modifier(func):
@@ -227,7 +227,7 @@ class JsonDB:  # (Logger):
         upgrader=None,
     ):
         # Logger.__init__(self)
-        self.logger = get_plugin_logger()
+        self.logger = plugin_logger
         self.lock = threading.RLock()
         self.storage = storage
         self.encoder = encoder
