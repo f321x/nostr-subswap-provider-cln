@@ -1,5 +1,5 @@
 venv
 .vscode
 .idea
-cln-testing-env/cln/plugins/*
+cln-testing-env/plugins/*
 *__pycache__*
