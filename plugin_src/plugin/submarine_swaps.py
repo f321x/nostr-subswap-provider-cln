@@ -449,7 +449,7 @@ class SwapManager:
             if swap.funding_txid is None:
                 # password = self.wallet.get_unlocked_password()
                 # for batch_rbf in [True, False]:
-                tx = self.create_funding_tx(swap=swap, tx=None)
+                tx = await self.create_funding_tx(swap=swap, tx=None)
                 # try:
                 await self.broadcast_funding_tx(swap, tx)
                 # except TxBroadcastError:
@@ -751,7 +751,7 @@ class SwapManager:
 #             await asyncio.sleep(0.1)
 #         return swap.funding_txid
 
-    def create_funding_tx(
+    async def create_funding_tx(
         self,
         *,
         swap: SwapData,
@@ -765,7 +765,7 @@ class SwapManager:
         # this is taken care of in wallet._is_rbf_allowed_to_touch_tx_output
         if tx is None:
             funding_output = PartialTxOutput.from_address_and_value(swap.lockup_address, swap.onchain_amount)
-            tx = self.wallet.create_transaction(
+            tx = await self.wallet.create_transaction(
                 outputs_without_change=[funding_output],
                 rbf=True,
             )
