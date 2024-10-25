@@ -29,11 +29,12 @@ async def main():
         user_config = PluginConfig.from_env(plugin)
         asyncio.create_task(user_config.logger.consume_messages())  # log message consumer for CLN logging
 
-        cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
-        cln_lightning = CLNLightning(plugin=plugin, config=user_config)
+        # cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
+        # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
 
         # data storage
-        storage = CLNStorage(plugin)  # storage functions using the CLN database
+        storage = await CLNStorage(cln_plugin=plugin)  # storage functions using the CLN database
+        await storage._test_db()
         # json_db = JsonDB(storage.read(), storage=storage)
 
         # swap manager
@@ -41,7 +42,7 @@ async def main():
         #                            db=json_db, plugin_config=user_config)
         # await swap_manager.main_loop()
     except Exception as e:
-        print("swap-provider crashed:", e, file=sys.stderr)
+        print(e, file=sys.stderr)  # will show e in the CLN logs
 
 
 if __name__ == "__main__":

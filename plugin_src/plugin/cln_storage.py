@@ -1,5 +1,7 @@
 #!/usr/bin/env python
+import sys
 
+from .bitcoin import witness_push
 from .cln_plugin import CLNPlugin
 from .globals import get_plugin_logger
 
@@ -17,13 +19,14 @@ class StorageReadWriteError(Exception): pass
 
 class CLNStorage:  # (Logger):
     """Using the Core Lightning database as storage for the plugin trough lightning-datastore rpc calls."""
-    datastore_key = "swap-provider"
+    read_key = "swap-provider"  # db key we need to read from (all children are returned)
+    write_key = ["swap-provider", "jsondb"]  # the child key we write to
 
     def __init__(self, *, cln_plugin: CLNPlugin):
         self.logger = get_plugin_logger()
-        self.datastore = cln_plugin.plugin.rpc.datastore
+        self.dbwriter = cln_plugin.plugin.rpc.datastore
+        self.dbreader = cln_plugin.plugin.rpc.listdatastore
         self.stdinout_mutex = cln_plugin.stdinout_mutex
-        self.raw = self.fetch_all_data(key=self.datastore_key)
         # self.path = standardize_path(path)
         # self._file_exists = bool(self.path and os.path.exists(self.path))
         # self.logger.info(f"wallet path {self.path}")
@@ -45,17 +48,25 @@ class CLNStorage:  # (Logger):
         #     self.pos = 0
         #     self.init_pos = 0
 
-    def fetch_all_data(self, *, key: str) -> str:
-        """
-        Fetch all data from the CLN datastore. Only called on init,
-        so stdionout mutex not neccessary
-        """
-        try:
-            raw_data = self.datastore(key=key)["string"]
-            self.logger.debug(f"Data fetched from cln datastore:\n{raw_data}")
-        except Exception as e:
-            raise StorageReadWriteError(f"Error fetching data from cln datastore: {e}")
-        return raw_data
+    def __await__(self):
+        return self._fetch_db_content(key=self.read_key).__await__()
+
+    async def _fetch_db_content(self, *, key: str) -> 'CLNStorage':
+        """ Fetch all data from the CLN datastore. Key has to be the parent of the key we want to fetch."""
+        async with self.stdinout_mutex:
+            try:
+                raw_data = self.dbreader(key=key)['datastore']
+                # {'datastore': [{'key': ['swap-provider', 'jsondb'], 'generation': 0, 'hex': '74657374', 'string': 'test'}]}
+            except Exception as e:
+                raise StorageReadWriteError(f"Error fetching data from cln datastore: {e}")
+        our_data = ""
+        for element in raw_data:  # should only contain one element but to be sure we filter for the right write_key
+            if element['key'] == self.write_key:
+                our_data = element['string']
+                break
+        self.logger.debug(f"Data fetched from cln datastore: {our_data}")
+        self.raw = our_data
+        return self
 
     def read(self):
         return self.raw
@@ -63,8 +74,8 @@ class CLNStorage:  # (Logger):
     async def write(self, data: str) -> None:
         async with self.stdinout_mutex:
             try:
-                res = self.datastore(key="datastore-key",
-                               string=data.encode("utf-8"),
+                res = self.dbwriter(key=self.write_key,
+                               string=data,
                                mode="create-or-replace")
             except Exception as e:
                 raise StorageReadWriteError(f"Failed to write to CLN-DB: {e}")
@@ -72,20 +83,29 @@ class CLNStorage:  # (Logger):
             raise StorageReadWriteError(f"CLN DB returned error on write: {res}")
         self.logger.debug(f"Wrote to CLN db: {res}")
         self.logger.info(f"Saved data to cln datastore")
-        # self._file_exists = True
 
     async def append(self, data: str) -> None:
         """ append data to db entry."""
         async with self.stdinout_mutex:
             try:
-                res = self.datastore(key=self.datastore_key,
-                                     string=data.encode("utf-8"),
+                res = self.dbwriter(key=self.write_key,
+                                     string=data,
                                      mode="must-append")
             except Exception as e:
                 raise StorageReadWriteError(f"Failed to append data to CLN DB: {e}")
         if "error" in res:
             raise StorageReadWriteError(f"CLN DB returned error on append: {res}")
         self.logger.debug(f"Appended data to CLN DB: {res}")
+
+    async def _test_db(self):
+        """Test if we can read and write to the cln datastore."""
+        try:
+            await self.write("1test1")
+            await self.append("2test2")
+            assert self.read() == "1test12test2"
+            print("CLN db test passed", file=sys.stderr)
+        except Exception as e:
+            raise StorageReadWriteError(f"CLN db test failed: {e}")
 
 
     # def needs_consolidation(self):
