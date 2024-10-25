@@ -29,7 +29,7 @@ from typing import Optional
 import jsonpatch
 
 from .utils import WalletFileException, profiler
-from .cln_storage import Storage
+from .cln_storage import CLNStorage
 from .globals import get_plugin_logger
 
 

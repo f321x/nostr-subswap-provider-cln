@@ -1,13 +1,6 @@
 #!/usr/bin/env python
 
-import os
-import stat
-import base64
-from enum import IntEnum
-
 from .cln_plugin import CLNPlugin
-from .utils import (WalletFileException, standardize_path,
-                    test_read_write_permissions, os_chmod)
 from .globals import get_plugin_logger
 
 
@@ -17,8 +10,7 @@ from .globals import get_plugin_logger
 #     XPUB_PASSWORD = 2
 
 
-# class StorageReadWriteError(Exception): pass
-
+class StorageReadWriteError(Exception): pass
 
 # class StorageOnDiskUnexpectedlyChanged(Exception): pass
 
@@ -30,6 +22,8 @@ class CLNStorage:  # (Logger):
     def __init__(self, *, cln_plugin: CLNPlugin):
         self.logger = get_plugin_logger()
         self.datastore = cln_plugin.plugin.rpc.datastore
+        self.stdinout_mutex = cln_plugin.stdinout_mutex
+        self.raw = self.fetch_all_data(key=self.datastore_key)
         # self.path = standardize_path(path)
         # self._file_exists = bool(self.path and os.path.exists(self.path))
         # self.logger.info(f"wallet path {self.path}")
@@ -51,47 +45,57 @@ class CLNStorage:  # (Logger):
         #     self.pos = 0
         #     self.init_pos = 0
 
-    # def read(self):
-    #     return self.decrypted if self.is_encrypted() else self.raw
-    #
-    # def write(self, data: str) -> None:
-    #     try:
-    #         mode = os.stat(self.path).st_mode
-    #     except FileNotFoundError:
-    #         mode = stat.S_IREAD | stat.S_IWRITE
-    #     s = data  # self.encrypt_before_writing(data)  // removed encryption
-    #     temp_path = "%s.tmp.%s" % (self.path, os.getpid())
-    #     with open(temp_path, "wb") as f:
-    #         os_chmod(temp_path, mode)  # set restrictive perms *before* we write data
-    #         f.write(s.encode("utf-8"))
-    #         self.pos = f.seek(0, os.SEEK_END)
-    #         f.flush()
-    #         os.fsync(f.fileno())
-    #     # assert that wallet file does not exist, to prevent wallet corruption (see issue #5082)
-    #     if not self.file_exists():
-    #         assert not os.path.exists(self.path)
-    #     os.replace(temp_path, self.path)
-    #     self._file_exists = True
-    #     self.logger.info(f"saved {self.path}")
-    #
-    # def append(self, data: str) -> None:
-    #     """ append data to file. for the moment, only non-encrypted file"""
-    #     assert not self.is_encrypted()
-    #     with open(self.path, "rb+") as f:
-    #         pos = f.seek(0, os.SEEK_END)
-    #         if pos != self.pos:
-    #             raise StorageOnDiskUnexpectedlyChanged(f"expected size {self.pos}, found {pos}")
-    #         f.write(data.encode("utf-8"))
-    #         self.pos = f.seek(0, os.SEEK_END)
-    #         f.flush()
-    #         os.fsync(f.fileno())
-    #
+    def fetch_all_data(self, *, key: str) -> str:
+        """
+        Fetch all data from the CLN datastore. Only called on init,
+        so stdionout mutex not neccessary
+        """
+        try:
+            raw_data = self.datastore(key=key)["string"]
+            self.logger.debug(f"Data fetched from cln datastore:\n{raw_data}")
+        except Exception as e:
+            raise StorageReadWriteError(f"Error fetching data from cln datastore: {e}")
+        return raw_data
+
+    def read(self):
+        return self.raw
+
+    async def write(self, data: str) -> None:
+        async with self.stdinout_mutex:
+            try:
+                res = self.datastore(key="datastore-key",
+                               string=data.encode("utf-8"),
+                               mode="create-or-replace")
+            except Exception as e:
+                raise StorageReadWriteError(f"Failed to write to CLN-DB: {e}")
+        if "error" in res:
+            raise StorageReadWriteError(f"CLN DB returned error on write: {res}")
+        self.logger.debug(f"Wrote to CLN db: {res}")
+        self.logger.info(f"Saved data to cln datastore")
+        # self._file_exists = True
+
+    async def append(self, data: str) -> None:
+        """ append data to db entry."""
+        async with self.stdinout_mutex:
+            try:
+                res = self.datastore(key=self.datastore_key,
+                                     string=data.encode("utf-8"),
+                                     mode="must-append")
+            except Exception as e:
+                raise StorageReadWriteError(f"Failed to append data to CLN DB: {e}")
+        if "error" in res:
+            raise StorageReadWriteError(f"CLN DB returned error on append: {res}")
+        self.logger.debug(f"Appended data to CLN DB: {res}")
+
+
     # def needs_consolidation(self):
     #     return self.pos > 2 * self.init_pos
     #
     # def file_exists(self) -> bool:
     #     return self._file_exists
-    #
+
+
+
     # def is_past_initial_decryption(self) -> bool:
     #     """Return if storage is in a usable state for normal operations.
     #
