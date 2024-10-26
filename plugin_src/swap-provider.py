@@ -12,10 +12,7 @@ from plugin.cln_chain import CLNChainWallet
 from plugin.cln_lightning import CLNLightning
 from plugin.plugin_config import PluginConfig
 from plugin.cln_storage import CLNStorage
-
-
-# from plugin.storage import Storage
-# from plugin.json_db import JsonDB
+from plugin.json_db import JsonDB
 # from plugin.submarine_swaps import SwapManager
 
 
@@ -31,10 +28,10 @@ async def main():
 
         # data storage
         storage = await CLNStorage(cln_plugin=plugin)  # storage functions using the CLN database
-        # json_db = JsonDB(storage.read(), storage=storage)
+        json_db = JsonDB(storage.read(), storage=storage)
 
         # cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
-        # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
+        # cln_lightning = CLNLightning(plugin=plugin, config=user_config, db=json_db)
 
 
         # swap manager
