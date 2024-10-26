@@ -29,13 +29,13 @@ async def main():
         user_config = PluginConfig.from_env(plugin)
         asyncio.create_task(user_config.logger.consume_messages())  # log message consumer for CLN logging
 
+        # data storage
+        storage = await CLNStorage(cln_plugin=plugin)  # storage functions using the CLN database
+        # json_db = JsonDB(storage.read(), storage=storage)
+
         # cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)
         # cln_lightning = CLNLightning(plugin=plugin, config=user_config)
 
-        # data storage
-        storage = await CLNStorage(cln_plugin=plugin)  # storage functions using the CLN database
-        await storage._test_db()
-        # json_db = JsonDB(storage.read(), storage=storage)
 
         # swap manager
         # swap_manager = SwapManager(wallet=cln_chain_wallet, lnworker=cln_lightning,

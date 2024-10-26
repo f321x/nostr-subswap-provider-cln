@@ -25,6 +25,7 @@
 import threading
 import copy
 import json
+from math import trunc
 from typing import Optional
 import jsonpatch
 
@@ -222,7 +223,7 @@ class JsonDB:  # (Logger):
         self,
         s: str,
         *,
-        storage: Optional['Storage'] = None,
+        storage: Optional['CLNStorage'] = None,
         encoder=None,
         upgrader=None,
     ):
@@ -241,8 +242,8 @@ class JsonDB:  # (Logger):
         # convert to StoredDict
         self.data = StoredDict(data, self, [])
         # write file in case there was a db upgrade
-        if self.storage and self.storage.file_exists():
-            self.write_and_force_consolidation()
+        # if self.storage and self.storage.file_exists():
+        #     await self.write_and_force_consolidation()
 
     def load_data(self, s: str) -> dict:
         if s == '':
@@ -261,7 +262,7 @@ class JsonDB:  # (Logger):
             raise WalletFileException("Malformed wallet file (not dict)")
         if patches:
             # apply patches
-            self.logger.info('found %d patches'%len(patches))
+            self.logger.debug('found %d patches'%len(patches))
             patch = jsonpatch.JsonPatch(patches)
             data = patch.apply(data)
             self.set_modified(True)
@@ -395,34 +396,32 @@ class JsonDB:  # (Logger):
         return v
 
     @locked
-    def write(self):
-        if (not self.storage.file_exists()
-                or self.storage.is_encrypted()
-                or self.storage.needs_consolidation()):
-            self.write_and_force_consolidation()
+    async def write(self):
+        if self.storage.needs_consolidation():
+            await self.write_and_force_consolidation()
         else:
-            self._append_pending_changes()
+            await self._append_pending_changes()
 
     @locked
-    def _append_pending_changes(self):
+    async def _append_pending_changes(self):
         if threading.current_thread().daemon:
             raise Exception('daemon thread cannot write db')
         if not self.pending_changes:
-            self.logger.info('no pending changes')
+            self.logger.debug('no pending changes')
             return
-        self.logger.info(f'appending {len(self.pending_changes)} pending changes')
+        self.logger.debug(f'appending {len(self.pending_changes)} pending changes')
         s = ''.join([',\n' + x for x in self.pending_changes])
-        self.storage.append(s)
+        await self.storage.append(s)
         self.pending_changes = []
 
     @locked
     @profiler
-    def write_and_force_consolidation(self):
+    async def write_and_force_consolidation(self):
         if threading.current_thread().daemon:
             raise Exception('daemon thread cannot write db')
         if not self.modified():
             return
-        json_str = self.dump(human_readable=not self.storage.is_encrypted())
-        self.storage.write(json_str)
+        json_str = self.dump(human_readable=True)  # we don't encrypt in this plugin
+        await self.storage.write(json_str)
         self.pending_changes = []
         self.set_modified(False)

@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 import sys
 
-from .bitcoin import witness_push
 from .cln_plugin import CLNPlugin
 from .globals import get_plugin_logger
-
 
 # class StorageEncryptionVersion(IntEnum):
 #     PLAINTEXT = 0
@@ -27,6 +25,8 @@ class CLNStorage:  # (Logger):
         self.dbwriter = cln_plugin.plugin.rpc.datastore
         self.dbreader = cln_plugin.plugin.rpc.listdatastore
         self.stdinout_mutex = cln_plugin.stdinout_mutex
+        self.pos = None
+        self.init_pos = None
         # self.path = standardize_path(path)
         # self._file_exists = bool(self.path and os.path.exists(self.path))
         # self.logger.info(f"wallet path {self.path}")
@@ -45,8 +45,6 @@ class CLNStorage:  # (Logger):
         # else:
         #     self.raw = ''
         #     self._encryption_version = StorageEncryptionVersion.PLAINTEXT
-        #     self.pos = 0
-        #     self.init_pos = 0
 
     def __await__(self):
         return self._fetch_db_content(key=self.read_key).__await__()
@@ -66,6 +64,8 @@ class CLNStorage:  # (Logger):
                 break
         self.logger.debug(f"Data fetched from cln datastore: {our_data}")
         self.raw = our_data
+        self.pos = len(our_data)
+        self.init_pos = self.pos
         return self
 
     def read(self):
@@ -81,6 +81,8 @@ class CLNStorage:  # (Logger):
                 raise StorageReadWriteError(f"Failed to write to CLN-DB: {e}")
         if "error" in res:
             raise StorageReadWriteError(f"CLN DB returned error on write: {res}")
+        self.init_pos = len(data)
+        self.pos = self.init_pos
         self.logger.debug(f"Wrote to CLN db: {res}")
         self.logger.info(f"Saved data to cln datastore")
 
@@ -95,6 +97,7 @@ class CLNStorage:  # (Logger):
                 raise StorageReadWriteError(f"Failed to append data to CLN DB: {e}")
         if "error" in res:
             raise StorageReadWriteError(f"CLN DB returned error on append: {res}")
+        self.pos += len(data)
         self.logger.debug(f"Appended data to CLN DB: {res}")
 
     async def _test_db(self):
@@ -102,15 +105,16 @@ class CLNStorage:  # (Logger):
         try:
             await self.write("1test1")
             await self.append("2test2")
+            await self._fetch_db_content(key=self.read_key)
             assert self.read() == "1test12test2"
             print("CLN db test passed", file=sys.stderr)
         except Exception as e:
             raise StorageReadWriteError(f"CLN db test failed: {e}")
 
 
-    # def needs_consolidation(self):
-    #     return self.pos > 2 * self.init_pos
-    #
+    def needs_consolidation(self):
+        return self.pos > 2 * self.init_pos
+
     # def file_exists(self) -> bool:
     #     return self._file_exists
 
