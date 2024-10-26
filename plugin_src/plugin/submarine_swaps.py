@@ -500,7 +500,7 @@ class SwapManager:
         self.lnworker.add_payment_info_for_hold_invoice(payment_hash, invoice_amount_sat)
 
         if prepay:
-            prepay_hash = self.lnworker.create_payment_info(amount_msat=prepay_amount_sat*1000)
+            prepay_hash = await self.lnworker.create_payment_info(amount_msat=prepay_amount_sat*1000)
             _, prepay_invoice = self.lnworker.get_bolt11_invoice(
                 payment_hash=prepay_hash,
                 amount_msat=prepay_amount_sat * 1000,
