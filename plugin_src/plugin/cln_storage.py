@@ -27,6 +27,7 @@ class CLNStorage:  # (Logger):
         self.stdinout_mutex = cln_plugin.stdinout_mutex
         self.pos = None
         self.init_pos = None
+        self.initialized = False
         # self.path = standardize_path(path)
         # self._file_exists = bool(self.path and os.path.exists(self.path))
         # self.logger.info(f"wallet path {self.path}")
@@ -66,9 +67,12 @@ class CLNStorage:  # (Logger):
         self.raw = our_data
         self.pos = len(our_data)
         self.init_pos = self.pos
+        self.initialized = True
         return self
 
     def read(self):
+        if not self.initialized:
+            raise StorageReadWriteError("CLNStorage has to be awaited for initialization")
         return self.raw
 
     async def write(self, data: str) -> None:
@@ -83,6 +87,7 @@ class CLNStorage:  # (Logger):
             raise StorageReadWriteError(f"CLN DB returned error on write: {res}")
         self.init_pos = len(data)
         self.pos = self.init_pos
+        self.raw = data
         self.logger.debug(f"Wrote to CLN db: {res}")
         self.logger.info(f"Saved data to cln datastore")
 

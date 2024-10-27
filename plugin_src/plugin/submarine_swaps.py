@@ -239,7 +239,7 @@ class SwapManager:
         self.logger.info(f'trying to pay invoice {key}')
         self.invoices_to_pay[key] = 1000000000000 # lock
         try:
-            invoice = self.wallet.get_invoice(key)
+            invoice = self.wallet.get_invoice(key)  # todo
             success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=10)
         except Exception as e:
             self.logger.info(f'exception paying {key}, will not retry')
@@ -260,7 +260,7 @@ class SwapManager:
                 if now() < not_before:
                     continue
                 await self.taskgroup.spawn(self.pay_invoice(key))
-                # todo: here
+
 
  #     def cancel_normal_swap(self, swap: SwapData):
 #         """ we must not have broadcast the funding tx """
@@ -428,20 +428,20 @@ class SwapManager:
 #         callback = lambda: self._claim_swap(swap)
 #         self.lnwatcher.add_callback(swap.lockup_address, callback)
 
-    async def hold_invoice_callback(self, payment_hash: bytes) -> None:
-        # note: this assumes the wallet has been unlocked
-        key = payment_hash.hex()
-        if key in self.swaps:
-            swap = self.swaps[key]
-            if swap.funding_txid is None:
-                # password = self.wallet.get_unlocked_password()
-                # for batch_rbf in [True, False]:
-                tx = await self.create_funding_tx(swap=swap, tx=None)
-                # try:
-                await self.broadcast_funding_tx(swap, tx)
-                # except TxBroadcastError:
-                #     continue
-                # break
+
+    # async def hold_invoice_callback(self, payment_hash: bytes) -> None:
+    #     key = payment_hash.hex()
+    #     if key in self.swaps:
+    #         swap = self.swaps[key]
+    #         if swap.funding_txid is None:
+    #             # password = self.wallet.get_unlocked_password()
+    #             # for batch_rbf in [True, False]:
+    #             tx = await self.create_funding_tx(swap=swap, tx=None)
+    #             # try:
+    #             await self.broadcast_funding_tx(swap, tx)
+    #             # except TxBroadcastError:
+    #             #     continue
+    #             # break
 
 
     async def create_normal_swap(self, *, lightning_amount_sat: int, payment_hash: bytes, their_pubkey: bytes = None):
@@ -477,7 +477,6 @@ class SwapManager:
             payment_hash: bytes,
             our_privkey: bytes,
             prepay: bool,
-            channels: Optional[Sequence['Channel']] = None,
             min_final_cltv_expiry_delta: Optional[int] = None,
     ) -> Tuple[SwapData, str, Optional[str]]:
         """creates a hold invoice"""
@@ -493,7 +492,6 @@ class SwapManager:
             message='Submarine swap',
             expiry=300,
             fallback_address=None,
-            channels=channels,
             min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
         )
         # add payment info to lnworker
@@ -507,7 +505,6 @@ class SwapManager:
                 message='Submarine swap mining fees',
                 expiry=300,
                 fallback_address=None,
-                channels=channels,
                 min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
             )
             self.lnworker.bundle_payments([payment_hash, prepay_hash])
@@ -1116,37 +1113,37 @@ class SwapManager:
 #         }
 #         return response
 
-    # async def server_create_swap(self, request):
-    #     # reverse for client, forward for server
-    #     # requesting a normal swap (old protocol) will raise an exception
-    #     #request = await r.json()
-    #     req_type = request['type']
-    #     assert request['pairId'] == 'BTC/BTC'
-    #     if req_type == 'reversesubmarine':
-    #         lightning_amount_sat=request['invoiceAmount']
-    #         payment_hash=bytes.fromhex(request['preimageHash'])
-    #         their_pubkey=bytes.fromhex(request['claimPublicKey'])
-    #         assert len(payment_hash) == 32
-    #         assert len(their_pubkey) == 33
-    #         swap, invoice, prepay_invoice = await self.create_normal_swap(
-    #             lightning_amount_sat=lightning_amount_sat,
-    #             payment_hash=payment_hash,
-    #             their_pubkey=their_pubkey
-    #         )
-    #         response = {
-    #             'id': payment_hash.hex(),
-    #             'invoice': invoice,
-    #             'minerFeeInvoice': prepay_invoice,
-    #             'lockupAddress': swap.lockup_address,
-    #             'redeemScript': swap.redeem_script.hex(),
-    #             'timeoutBlockHeight': swap.locktime,
-    #             "onchainAmount": swap.onchain_amount,
-    #         }
-    #     elif req_type == 'submarine':
-    #         raise Exception('Deprecated API. Please upgrade your version of Electrum')
-    #     else:
-    #         raise Exception('unsupported request type:' + req_type)
-    #     return response
+    async def server_create_swap(self, request):
+        # reverse for client, forward for server
+        # requesting a normal swap (old protocol) will raise an exception
+        #request = await r.json()
+        req_type = request['type']
+        assert request['pairId'] == 'BTC/BTC'
+        if req_type == 'reversesubmarine':
+            lightning_amount_sat=request['invoiceAmount']
+            payment_hash=bytes.fromhex(request['preimageHash'])
+            their_pubkey=bytes.fromhex(request['claimPublicKey'])
+            assert len(payment_hash) == 32
+            assert len(their_pubkey) == 33
+            swap, invoice, prepay_invoice = await self.create_normal_swap(
+                lightning_amount_sat=lightning_amount_sat,
+                payment_hash=payment_hash,
+                their_pubkey=their_pubkey
+            )
+            response = {
+                'id': payment_hash.hex(),
+                'invoice': invoice,
+                'minerFeeInvoice': prepay_invoice,
+                'lockupAddress': swap.lockup_address,
+                'redeemScript': swap.redeem_script.hex(),
+                'timeoutBlockHeight': swap.locktime,
+                "onchainAmount": swap.onchain_amount,
+            }
+        elif req_type == 'submarine':
+            raise Exception('Deprecated API. Please upgrade your version of Electrum')
+        else:
+            raise Exception('unsupported request type:' + req_type)
+        return response
 
 #     def get_groups_for_onchain_history(self):
 #         current_height = self.wallet.adb.get_local_height()
