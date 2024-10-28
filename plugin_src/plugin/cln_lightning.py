@@ -1,11 +1,11 @@
 import os
-from typing import NamedTuple, Optional, Callable, Awaitable
+from typing import NamedTuple, Optional, Callable, Awaitable, Dict, List, Tuple
 from enum import IntEnum
 import threading
 
 from .cln_storage import CLNStorage
 from .crypto import sha256
-from .invoices import PR_UNPAID, PR_PAID
+from .invoices import PR_UNPAID, PR_PAID, Invoice, BaseInvoice
 from .cln_plugin import CLNPlugin
 from .json_db import JsonDB
 from .plugin_config import PluginConfig
@@ -35,8 +35,9 @@ class CLNLightning:
         self.logger = config.logger
         self.hold_invoice_callbacks = {}
         self.lock = threading.RLock()
-        self.payment_info = self.db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
-        self.preimages = self.db.get_dict('lightning_preimages')  # RHASH -> preimage
+        self.payment_info = db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
+        self.preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
+        self._invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
         self.logger.debug("CLNLightning initialized")
 
 
@@ -90,39 +91,55 @@ class CLNLightning:
         if write_to_disk:
             await self.db.write()
 
-    # async def get_bolt11_invoice(
-    #         self, *,
-    #         payment_hash: bytes,
-    #         amount_msat: Optional[int],
-    #         message: str,
-    #         expiry: int,  # expiration of invoice (in seconds, relative)
-    #         fallback_address: Optional[str],
-    #         min_final_cltv_expiry_delta: Optional[int] = None,
-    #         preimage: Optional[bytes] = None,
-    # ) -> Tuple[LnAddr, str]:
-    #     assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
-    #     preimage_hex = None
-    #     if preimage:
-    #         assert sha256(preimage) == payment_hash, "preimage does not match payment_hash"
-    #         preimage_hex = preimage.hex() if preimage else None
-    #
-    #     amount_msat = "any" if amount_msat is None else amount_msat
-    #     async with self.plugin.stdinout_mutex:
-    #         try:
-    #             result = self.plugin.plugin.rpc.invoice(amount_msat=amount_msat,  # any for 0 amount invoices
-    #                                                     label=payment_hash.hex(),  # unique internal identifier
-    #                                                     description=message,
-    #                                                     expiry=expiry,
-    #                                                     fallbacks=fallback_address,
-    #                                                     preimage=preimage_hex,
-    #                                                     cltv=min_final_cltv_expiry_delta,
-    #                                                     exposeprivatechannels=True
-    #                                                     )
-    #
-    #         except Exception as e:
-    #             raise Exception("get_bolt11_invoice call to CLN failed: " + str(e))
+
+    async def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
+        key = invoice.get_id()
+        if not invoice.is_lightning():
+            raise NotImplementedError("save_invoice: only lightning invoices are supported")
+        self._invoices[key] = invoice
+        if write_to_disk:
+            await self.db.write()
+
+    def get_invoice(self, key: str) -> Optional[Invoice]:
+        return self._invoices.get(key)
+
+    async def delete_invoice(self, key: str) -> None:
+        inv = self._invoices.pop(key)
+        if inv is None:
+            return
+        await self.db.write()
 
 
+    async def get_regular_bolt11_invoice(  # we generate the preimage
+            self, *,
+            amount_msat: Optional[int],
+            message: str,
+            expiry: int,  # expiration of invoice (in seconds, relative)
+            fallback_address: Optional[str],
+            min_final_cltv_expiry_delta: Optional[int] = None,
+            preimage: Optional[bytes] = None,
+    ) -> Tuple[str, str]:  # -> (bolt11, label)
+        preimage_hex = None
+        if preimage:
+            preimage_hex = preimage.hex() if preimage else None
+        label_hex = os.urandom(8).hex()
+        amount_msat = "any" if amount_msat is None else amount_msat
+
+        async with self.plugin.stdinout_mutex:
+            try:
+                result = self.plugin.plugin.rpc.invoice(amount_msat=amount_msat,  # any for 0 amount invoices
+                                                        label=label_hex,  # unique internal identifier
+                                                        description=message,
+                                                        expiry=expiry,
+                                                        fallbacks=fallback_address,
+                                                        preimage=preimage_hex,
+                                                        cltv=min_final_cltv_expiry_delta,
+                                                        exposeprivatechannels=True
+                                                        )
+                bolt11 = result['bolt11']
+            except Exception as e:
+                raise Exception("get_bolt11_invoice call to CLN failed: " + str(e))
+        return bolt11, label_hex
 
     # def get_bolt11_invoice(
     #         self, *,

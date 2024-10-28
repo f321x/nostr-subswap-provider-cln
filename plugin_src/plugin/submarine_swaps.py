@@ -213,7 +213,7 @@ class SwapManager:
 
 #     @log_exceptions
     async def main_loop(self):
-        tasks = [self.pay_pending_invoices()]
+        tasks = [self.pay_pending_ln_invoices()]
         if self.is_server:
             if self.use_nostr:
                 tasks.append(self.run_nostr_server())
@@ -235,31 +235,33 @@ class SwapManager:
 #         else:
 #             return HttpTransport(self.config, self)
 
-    async def pay_invoice(self, key):
-        self.logger.info(f'trying to pay invoice {key}')
+    async def pay_pending_ln_invoice(self, key):
+        self.logger.debug(f'trying to pay invoice {key}')
         self.invoices_to_pay[key] = 1000000000000 # lock
         try:
-            invoice = self.wallet.get_invoice(key)  # todo
+            invoice = self.lnworker.get_invoice(key)  # todo
             success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=10)
         except Exception as e:
             self.logger.info(f'exception paying {key}, will not retry')
             self.invoices_to_pay.pop(key, None)
+            await self.lnworker.delete_invoice(key)
             return
         if not success:
             self.logger.info(f'failed to pay {key}, will retry in 10 minutes')
             self.invoices_to_pay[key] = now() + 600
         else:
             self.logger.info(f'paid invoice {key}')
+            await self.lnworker.delete_invoice(key)
             self.invoices_to_pay.pop(key, None)
 
-    async def pay_pending_invoices(self):
+    async def pay_pending_ln_invoices(self):
         self.invoices_to_pay = {}
         while True:
             await asyncio.sleep(5)
             for key, not_before in list(self.invoices_to_pay.items()):
                 if now() < not_before:
                     continue
-                await self.taskgroup.spawn(self.pay_invoice(key))
+                await self.taskgroup.spawn(self.pay_pending_ln_invoice(key))
 
 
  #     def cancel_normal_swap(self, swap: SwapData):
@@ -486,7 +488,7 @@ class SwapManager:
         else:
             invoice_amount_sat = lightning_amount_sat
 
-        _, invoice = self.lnworker.get_bolt11_invoice(
+        invoice = self.lnworker.get_bolt11_invoice(
             payment_hash=payment_hash,
             amount_msat=invoice_amount_sat * 1000,
             message='Submarine swap',
@@ -499,7 +501,7 @@ class SwapManager:
 
         if prepay:
             prepay_hash = await self.lnworker.create_payment_info(amount_msat=prepay_amount_sat*1000)
-            _, prepay_invoice = self.lnworker.get_bolt11_invoice(
+            prepay_invoice = self.lnworker.get_bolt11_invoice(
                 payment_hash=prepay_hash,
                 amount_msat=prepay_amount_sat * 1000,
                 message='Submarine swap mining fees',
