@@ -514,7 +514,7 @@ class SwapManager:
             prepay_hash = None
 
         lockup_address = script_to_p2wsh(redeem_script)
-        receive_address = self.wallet.get_receiving_address()
+        receive_address = await self.wallet.get_receiving_address()
         swap = SwapData(
             redeem_script=redeem_script,
             locktime = locktime,
@@ -559,7 +559,7 @@ class SwapManager:
 #             lightning_amount_sat=lightning_amount_sat)
 #         return swap
 #
-#     def add_reverse_swap(
+#     async def add_reverse_swap(
 #         self,
 #         *,
 #         redeem_script: bytes,
@@ -572,7 +572,7 @@ class SwapManager:
 #         prepay_hash: Optional[bytes] = None,
 #     ) -> SwapData:
 #         lockup_address = script_to_p2wsh(redeem_script)
-#         receive_address = self.wallet.get_receiving_address()
+#         receive_address = await self.wallet.get_receiving_address()
 #         swap = SwapData(
 #             redeem_script = redeem_script,
 #             locktime = locktime,

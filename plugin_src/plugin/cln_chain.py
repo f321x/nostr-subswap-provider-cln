@@ -102,6 +102,15 @@ class CLNChainWallet:
             self.logger.warning("get_chain_fee using fallback fee rate of %s sat/vbyte", feerate_pervb)
         return math.ceil(feerate_pervb * size_vbyte)
 
+    async def get_receiving_address(self) -> str:
+        """Returns a new receiving address from the CLN wallet."""
+        async with self.cln.stdinout_mutex:
+            try:
+                address = self.cln.plugin.rpc.newaddr()['bech32']
+            except RpcError as e:
+                raise Exception("get_receiving_address failed to call newaddr rpc: " + str(e))
+        return address
+
 
 class TxBroadcastError(Exception):
     pass
