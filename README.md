@@ -12,7 +12,7 @@ backup, wallet or Nostr identity.
 ### <u>Incentives (Reason to run this plugin alongside CLN)</u>
 The swap provider can charge a proportional fee for the liquidity provided.
 There is no risk of financial loss for the swap provider, as the swap is atomic and
-the mining fees required to unwind a failed swap are settled by a separate lightning payment.
+the mining fees required to unwind an unclaimed swap are settled by a separate lightning payment.
 A competitive fee can be chosen according to market conditions,
 fees of other providers can be seen in the Electrum Wallet.
 
@@ -39,3 +39,7 @@ The following variables are available:
 - `CONFIRMATION_TARGET_BLOCKS`: Desired confirmation speed of onchain transactions. Example: `6`
 - `FALLBACK_FEE_SATVB`: Fallback feerate to use if no reliable fee estimation is possible. Example:`65`
 - `PLUGIN_LOG_LEVEL` (optional): Level of Log output. Examples: `DEBUG`, `INFO`, `WARNING`, `ERROR`
+
+### <u>Libraries</u>
+This plugin uses a lot of Electrum Wallet code that has been stripped/modified for this use case.
+It also uses the `pyln-client` library to communicate with CLN over the RPC interface.
