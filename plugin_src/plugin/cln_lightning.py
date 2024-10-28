@@ -114,7 +114,7 @@ class CLNLightning:
         preimage_hex = None
         if preimage:
             preimage_hex = preimage.hex() if preimage else None
-        label_hex = os.urandom(8).hex()
+        label_hex = os.urandom(8).hex()  # unique internal identifier, can be used to fetch invoice status later
         amount_msat = "any" if amount_msat is None else amount_msat
 
         async with self.plugin.stdinout_mutex:
