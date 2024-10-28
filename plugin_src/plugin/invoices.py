@@ -3,7 +3,7 @@ from typing import List, Optional, Union, Dict, Any, Sequence
 
 import attr
 
-# from .json_db import StoredObject, stored_in
+from .json_db import StoredObject, stored_in
 # from .i18n import _
 from .utils import age, InvoiceError, format_satoshis
 # from .bip21 import create_bip21_uri
@@ -265,7 +265,7 @@ class BaseInvoice:
         return d
 
 
-# @stored_in('invoices')
+@stored_in('invoices')
 @attr.s
 class Invoice(BaseInvoice):
     lightning_invoice = attr.ib(type=str, kw_only=True)  # type: Optional[str]
