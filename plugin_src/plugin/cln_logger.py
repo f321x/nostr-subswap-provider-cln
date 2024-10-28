@@ -15,7 +15,7 @@ class PluginLogger:
         set_plugin_logger_global(self)
 
     async def consume_messages(self):
-        """Implement a log queue to have simple, sync log calls but still be able to use thes shared stdinout mutex"""
+        """Implement a log queue to have simple, sync log calls but still be able to use thes async, shared stdinout mutex"""
         while True:
             while not self.log_queue.empty():
                 msg = await self.log_queue.get()
@@ -35,12 +35,12 @@ class PluginLogger:
 
     def warning(self, msg: str):
         if self.is_enabled("WARNING"):
-            msg = f"WARNING: {msg}"  # plugin doesnt support WARN
+            msg = f"WARNING: {msg}"  # CLN/plugin doesnt support WARN
             self._put_on_output_queue(msg)
 
     def error(self, msg: str):
         if self.is_enabled("ERROR"):
-            msg = f"ERROR: {msg}"  # plugin doesnt support ERROR
+            msg = f"ERROR: {msg}"  # CLN/plugin doesnt support ERROR
             self._put_on_output_queue(msg)
 
     def _put_on_output_queue(self, msg: str):
