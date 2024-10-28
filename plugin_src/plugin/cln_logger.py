@@ -14,7 +14,6 @@ class PluginLogger:
         self.log_queue = asyncio.Queue()
         set_plugin_logger_global(self)
 
-
     async def consume_messages(self):
         """Implement a log queue to have simple, sync log calls but still be able to use thes shared stdinout mutex"""
         while True:
@@ -24,37 +23,31 @@ class PluginLogger:
                     self.logger(msg, level="info")
             await asyncio.sleep(0.1)
 
-
     def debug(self, msg: str):
         if self.is_enabled("DEBUG"):
             # DEBUG can be enabled in CLN but this way the plugin has its own debug mode and will always log if enabled
             msg = f"DEBUG: {msg}"
-            self.put_on_queue(msg)
-
+            self._put_on_output_queue(msg)
 
     def info(self, msg: str):
         if self.is_enabled("INFO"):
-            self.put_on_queue(msg)
-
+            self._put_on_output_queue(msg)
 
     def warning(self, msg: str):
         if self.is_enabled("WARNING"):
             msg = f"WARNING: {msg}"  # plugin doesnt support WARN
-            self.put_on_queue(msg)
-
+            self._put_on_output_queue(msg)
 
     def error(self, msg: str):
         if self.is_enabled("ERROR"):
             msg = f"ERROR: {msg}"  # plugin doesnt support ERROR
-            self.put_on_queue(msg)
+            self._put_on_output_queue(msg)
 
-
-    def put_on_queue(self, msg: str):
+    def _put_on_output_queue(self, msg: str):
         try:
             self.log_queue.put_nowait(msg)
         except asyncio.QueueFull:
             print("Log queue full, dropping message:", msg, file=sys.stderr)
-
 
     def is_enabled(self, level: str) -> bool:
         """

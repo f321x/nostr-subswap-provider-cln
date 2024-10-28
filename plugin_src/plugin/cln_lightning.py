@@ -40,14 +40,11 @@ class CLNLightning:
         self._invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
         self.logger.debug("CLNLightning initialized")
 
-
     def register_hold_invoice(self, payment_hash: bytes, cb: Callable[[bytes], Awaitable[None]]):
         self.hold_invoice_callbacks[payment_hash] = cb
 
-
     def unregister_hold_invoice(self, payment_hash: bytes):
         self.hold_invoice_callbacks.pop(payment_hash)
-
 
     async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
         retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
@@ -63,7 +60,6 @@ class CLNLightning:
             return True, result['payment_preimage']
         return False, result
 
-
     async def create_payment_info(self, *, amount_msat: Optional[int], write_to_disk=True) -> bytes:
         payment_preimage = os.urandom(32)
         payment_hash = sha256(payment_preimage)
@@ -74,14 +70,12 @@ class CLNLightning:
             await self.db.write()
         return payment_hash
 
-
     async def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
         if sha256(preimage) != payment_hash:
             raise Exception("tried to save incorrect preimage for payment_hash")
         self.preimages[payment_hash.hex()] = preimage.hex()
         if write_to_disk:
             await self.db.write()
-
 
     async def save_payment_info(self, info: PaymentInfo, *, write_to_disk: bool = True) -> None:
         key = info.payment_hash.hex()
@@ -90,7 +84,6 @@ class CLNLightning:
             self.payment_info[key] = info.amount_msat, info.direction, info.status
         if write_to_disk:
             await self.db.write()
-
 
     async def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
         key = invoice.get_id()
@@ -108,7 +101,6 @@ class CLNLightning:
         if inv is None:
             return
         await self.db.write()
-
 
     async def get_regular_bolt11_invoice(  # we generate the preimage
             self, *,

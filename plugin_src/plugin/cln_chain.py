@@ -54,7 +54,6 @@ class CLNChainWallet:
 
         return signed_psbt
 
-
     async def broadcast_transaction(self, signed_psbt: PartialTransaction) -> None:
         """Broadcasts a signed transaction to the bitcoin network."""
         # psbt = PartialTransaction().from_tx(signed_tx)._serialize_as_base64()
@@ -64,7 +63,6 @@ class CLNChainWallet:
                 self.cln.plugin.rpc.sendpsbt(signed_psbt._serialize_as_base64())
             except RpcError as e:
                 raise TxBroadcastError(e) from e
-
 
     async def get_local_height(self) -> int:
         """Returns the current block height of the cln backend."""

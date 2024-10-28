@@ -9,7 +9,6 @@ class CLNPlugin:
         self.stdinout_mutex = asyncio.Lock()  # protect stdinout from concurrent access so different rpc calls dont interfere
         self.thread = asyncio.to_thread(self.plugin.run)  # the plugin is blocking to read stdin so we run it in a thread
 
-
     def __await__(self):
         async def _check_running():
             """Check if plugin.run() has returned in the thread"""
@@ -19,7 +18,6 @@ class CLNPlugin:
                 raise Exception("Plugin not running")
             return self
         return _check_running().__await__()
-
 
     def derive_secret(self, derivation_str: str) -> bytes:
         """Derive a secret from CLN HSM secret (for use as Nostr secret)"""
