@@ -59,30 +59,30 @@ class CLNLightning:
             return True, result['payment_preimage']
         return False, result
 
-    async def create_payment_info(self, *, amount_msat: Optional[int], write_to_disk=True) -> bytes:
+    def create_payment_info(self, *, amount_msat: Optional[int], write_to_disk=True) -> bytes:
         payment_preimage = os.urandom(32)
         payment_hash = sha256(payment_preimage)
         info = PaymentInfo(payment_hash, amount_msat, RECEIVED, PR_UNPAID)
-        await self.save_preimage(payment_hash, payment_preimage, write_to_disk=False)
-        await self.save_payment_info(info, write_to_disk=False)
+        self.save_preimage(payment_hash, payment_preimage, write_to_disk=False)
+        self.save_payment_info(info, write_to_disk=False)
         if write_to_disk:
-            await self.db.write()
+            self.db.write()
         return payment_hash
 
-    async def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
+    def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
         if sha256(preimage) != payment_hash:
             raise Exception("tried to save incorrect preimage for payment_hash")
         self.preimages[payment_hash.hex()] = preimage.hex()
         if write_to_disk:
-            await self.db.write()
+            self.db.write()
 
-    async def save_payment_info(self, info: PaymentInfo, *, write_to_disk: bool = True) -> None:
+    def save_payment_info(self, info: PaymentInfo, *, write_to_disk: bool = True) -> None:
         key = info.payment_hash.hex()
         assert info.status in SAVED_PR_STATUS
         with self.lock:
             self.payment_info[key] = info.amount_msat, info.direction, info.status
         if write_to_disk:
-            await self.db.write()
+            self.db.write()
 
     async def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
         key = invoice.get_id()
@@ -95,11 +95,11 @@ class CLNLightning:
     def get_invoice(self, key: str) -> Optional[Invoice]:
         return self._invoices.get(key)
 
-    async def delete_invoice(self, key: str) -> None:
+    def delete_invoice(self, key: str) -> None:
         inv = self._invoices.pop(key)
         if inv is None:
             return
-        await self.db.write()
+        self.db.write()
 
     def get_regular_bolt11_invoice(  # we generate the preimage
             self, *,
