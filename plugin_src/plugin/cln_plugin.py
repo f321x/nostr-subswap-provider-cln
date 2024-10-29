@@ -5,8 +5,6 @@ import asyncio
 class CLNPlugin:
     def __init__(self):
         self.plugin = Plugin()
-        # register additional methods in between
-        self.stdinout_mutex = asyncio.Lock()  # protect stdinout from concurrent access so different rpc calls dont interfere
         self.thread = asyncio.to_thread(self.plugin.run)  # the plugin is blocking to read stdin so we run it in a thread
 
     def __await__(self):
@@ -28,3 +26,8 @@ class CLNPlugin:
         secret_bytes = bytes.fromhex(secret_hex)
         assert len(secret_bytes) == 32
         return secret_bytes
+
+
+    # def _htlc_accepted(self, payload: dict):
+    #     """Called when a new HTLC is accepted"""
+    #     # do something with the payload
