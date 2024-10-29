@@ -396,14 +396,14 @@ class JsonDB:  # (Logger):
         return v
 
     @locked
-    async def write(self):
+    def write(self):
         if self.storage.needs_consolidation():
-            await self.write_and_force_consolidation()
+            self.write_and_force_consolidation()
         else:
-            await self._append_pending_changes()
+            self._append_pending_changes()
 
     @locked
-    async def _append_pending_changes(self):
+    def _append_pending_changes(self):
         if threading.current_thread().daemon:
             raise Exception('daemon thread cannot write db')
         if not self.pending_changes:
@@ -411,17 +411,17 @@ class JsonDB:  # (Logger):
             return
         self.logger.debug(f'appending {len(self.pending_changes)} pending changes')
         s = ''.join([',\n' + x for x in self.pending_changes])
-        await self.storage.append(s)
+        self.storage.append(s)
         self.pending_changes = []
 
     @locked
     @profiler
-    async def write_and_force_consolidation(self):
+    def write_and_force_consolidation(self):
         if threading.current_thread().daemon:
             raise Exception('daemon thread cannot write db')
         if not self.modified():
             return
         json_str = self.dump(human_readable=True)  # we don't encrypt in this plugin
-        await self.storage.write(json_str)
+        self.storage.write(json_str)
         self.pending_changes = []
         self.set_modified(False)
