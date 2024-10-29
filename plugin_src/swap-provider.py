@@ -24,10 +24,9 @@ async def main():
 
         # user config (from .env file or env)
         user_config = PluginConfig.from_env(plugin)
-        asyncio.create_task(user_config.logger.consume_messages())  # log message consumer for CLN logging
 
         # data storage
-        storage = await CLNStorage(cln_plugin=plugin)  # storage functions using the CLN database
+        storage = CLNStorage(cln_plugin=plugin)  # storage functions using the CLN database
         json_db = JsonDB(storage.read(), storage=storage)
 
         # cln_chain_wallet = CLNChainWallet(plugin=plugin, config=user_config)

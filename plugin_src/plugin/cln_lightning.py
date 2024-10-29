@@ -48,12 +48,11 @@ class CLNLightning:
 
     async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
         retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
-        async with self.plugin.stdinout_mutex:
-            try:
-                result = await call_blocking_with_timeout(self.plugin.plugin.rpc.pay(bolt11=bolt11, retry_for=retry_for),
-                                                    timeout=retry_for + 30)
-            except Exception as e:
-                return False, "pay_invoice call to CLN failed: " + str(e)
+        try:
+            result = await call_blocking_with_timeout(self.plugin.plugin.rpc.pay(bolt11=bolt11, retry_for=retry_for),
+                                                timeout=retry_for + 30)
+        except Exception as e:
+            return False, "pay_invoice call to CLN failed: " + str(e)
 
         # check if the payment was successful, currently we assume it failed if it's not "complete"
         if 'payment_preimage' in result and result['payment_preimage'] and result['status'] == 'complete':
@@ -102,7 +101,7 @@ class CLNLightning:
             return
         await self.db.write()
 
-    async def get_regular_bolt11_invoice(  # we generate the preimage
+    def get_regular_bolt11_invoice(  # we generate the preimage
             self, *,
             amount_msat: Optional[int],
             message: str,
@@ -117,20 +116,19 @@ class CLNLightning:
         label_hex = os.urandom(8).hex()  # unique internal identifier, can be used to fetch invoice status later
         amount_msat = "any" if amount_msat is None else amount_msat
 
-        async with self.plugin.stdinout_mutex:
-            try:
-                result = self.plugin.plugin.rpc.invoice(amount_msat=amount_msat,  # any for 0 amount invoices
-                                                        label=label_hex,  # unique internal identifier
-                                                        description=message,
-                                                        expiry=expiry,
-                                                        fallbacks=fallback_address,
-                                                        preimage=preimage_hex,
-                                                        cltv=min_final_cltv_expiry_delta,
-                                                        exposeprivatechannels=True
-                                                        )
-                bolt11 = result['bolt11']
-            except Exception as e:
-                raise Exception("get_bolt11_invoice call to CLN failed: " + str(e))
+        try:
+            result = self.plugin.plugin.rpc.invoice(amount_msat=amount_msat,  # any for 0 amount invoices
+                                                    label=label_hex,  # unique internal identifier
+                                                    description=message,
+                                                    expiry=expiry,
+                                                    fallbacks=fallback_address,
+                                                    preimage=preimage_hex,
+                                                    cltv=min_final_cltv_expiry_delta,
+                                                    exposeprivatechannels=True
+                                                    )
+            bolt11 = result['bolt11']
+        except Exception as e:
+            raise Exception("get_bolt11_invoice call to CLN failed: " + str(e))
         return bolt11, label_hex
 
     # def get_bolt11_invoice(
