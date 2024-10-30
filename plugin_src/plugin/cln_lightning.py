@@ -3,10 +3,11 @@ from typing import NamedTuple, Optional, Callable, Awaitable, Dict, List, Tuple
 from enum import IntEnum
 import threading
 
-from .cln_storage import CLNStorage
+from pyln.client import LightningRpc
+
+from .cln_logger import PluginLogger
 from .crypto import sha256
 from .invoices import PR_UNPAID, PR_PAID, Invoice, BaseInvoice
-from .cln_plugin import CLNPlugin
 from .json_db import JsonDB
 from .plugin_config import PluginConfig
 from .utils import call_blocking_with_timeout
@@ -28,11 +29,11 @@ SENT = Direction.SENT
 RECEIVED = Direction.RECEIVED
 
 class CLNLightning:
-    def __init__(self, *, plugin: CLNPlugin, config: PluginConfig, db: JsonDB):
-        self.plugin = plugin
+    def __init__(self, *, plugin_rpc: LightningRpc, config: PluginConfig, db: JsonDB, logger: PluginLogger):
+        self.rpc = plugin_rpc
         self.config = config
         self.db = db
-        self.logger = config.logger
+        self.logger = logger
         self.hold_invoice_callbacks = {}
         self.lock = threading.RLock()
         self.payment_info = db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
@@ -49,7 +50,7 @@ class CLNLightning:
     async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
         retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
         try:
-            result = await call_blocking_with_timeout(self.plugin.plugin.rpc.pay(bolt11=bolt11, retry_for=retry_for),
+            result = await call_blocking_with_timeout(self.rpc.pay(bolt11=bolt11, retry_for=retry_for),
                                                 timeout=retry_for + 30)
         except Exception as e:
             return False, "pay_invoice call to CLN failed: " + str(e)
@@ -117,7 +118,7 @@ class CLNLightning:
         amount_msat = "any" if amount_msat is None else amount_msat
 
         try:
-            result = self.plugin.plugin.rpc.invoice(amount_msat=amount_msat,  # any for 0 amount invoices
+            result = self.rpc.invoice(amount_msat=amount_msat,  # any for 0 amount invoices
                                                     label=label_hex,  # unique internal identifier
                                                     description=message,
                                                     expiry=expiry,

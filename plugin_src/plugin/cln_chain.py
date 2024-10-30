@@ -1,18 +1,17 @@
 import math
+from collections.abc import Callable
 from typing import Optional
-from pyln.client import RpcError
-from .cln_plugin import CLNPlugin
+from pyln.client import RpcError, LightningRpc
+from .cln_logger import PluginLogger
 from .plugin_config import PluginConfig
-from .globals import get_plugin_logger
 from .transaction import PartialTxOutput, PartialTransaction, Transaction
-from .utils import call_blocking_with_timeout
 
 
 class CLNChainWallet:
-    def __init__(self, *, plugin: CLNPlugin, config: PluginConfig):
-        self.cln = plugin
+    def __init__(self, *, plugin_rpc: LightningRpc, config: PluginConfig, logger: PluginLogger):
+        self.rpc = plugin_rpc
         self.config = config
-        self.logger = get_plugin_logger()
+        self.logger = logger
         self.logger.debug("CLNChainWallet initialized")
 
     def create_transaction(self, *, outputs_without_change: [PartialTxOutput], rbf: bool) -> Optional[PartialTransaction]:
@@ -23,7 +22,7 @@ class CLNChainWallet:
         startweight: int = tx_core_weight + spk_weights  # weight of the tx without any inputs (required for CLN)
         # get inpts from CLN wallet using fundpsbt rpc call
         try:
-            fundpsbt_response = self.cln.plugin.rpc.fundpsbt(satoshi=output_sum_sat,
+            fundpsbt_response = self.rpc.fundpsbt(satoshi=output_sum_sat,
                                                             feerate=self.config.cln_feerate_str,
                                                             startweight=startweight,
                                                             minconf=None,
@@ -42,7 +41,7 @@ class CLNChainWallet:
 
         # sign psbt using CLN rpc call
         try:
-           signed_psbt = self.cln.plugin.rpc.signpsbt(complete_psbt_b64)["signed_psbt"]
+           signed_psbt = self.rpc.signpsbt(complete_psbt_b64)["signed_psbt"]
         except Exception as e:
             self.logger.error("create_transaction failed to call signpsbt rpc: %s", e)
             return None
@@ -57,14 +56,14 @@ class CLNChainWallet:
         # psbt = PartialTransaction().from_tx(signed_tx)._serialize_as_base64()
         # broadcast psbt
         try:
-            self.cln.plugin.rpc.sendpsbt(signed_psbt._serialize_as_base64())
+            self.rpc.sendpsbt(signed_psbt._serialize_as_base64())
         except RpcError as e:
             raise TxBroadcastError(e) from e
 
     def get_local_height(self) -> int:
         """Returns the current block height of the cln backend."""
         try:
-            response = self.cln.plugin.rpc.getinfo()
+            response = self.rpc.getinfo()
         except RpcError as e:
             raise e
         if 'warning_bitcoind_sync' or 'warning_lightningd_sync' or not 'blockheight' in response:
@@ -79,7 +78,7 @@ class CLNChainWallet:
         fee estimation algorithm."""
         speed_target_blocks = self.config.confirmation_speed_target_blocks
         try:
-            feerates = self.cln.plugin.rpc.feerates("perkb")
+            feerates = self.rpc.feerates("perkb")
             feerates = feerates['perkb']['estimates']
         except (RpcError, TimeoutError) as e:
             feerates = []
@@ -98,7 +97,7 @@ class CLNChainWallet:
     def get_receiving_address(self) -> str:
         """Returns a new receiving address from the CLN wallet."""
         try:
-            address = self.cln.plugin.rpc.newaddr()['bech32']
+            address = self.rpc.newaddr()['bech32']
         except RpcError as e:
             raise Exception("get_receiving_address failed to call newaddr rpc: " + str(e))
         return address

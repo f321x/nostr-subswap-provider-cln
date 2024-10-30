@@ -25,13 +25,11 @@
 import threading
 import copy
 import json
-from math import trunc
-from typing import Optional
 import jsonpatch
 
+from .cln_logger import PluginLogger
 from .utils import WalletFileException, profiler
 from .cln_storage import CLNStorage
-from .globals import get_plugin_logger
 
 
 def modifier(func):
@@ -221,24 +219,20 @@ class JsonDB:  # (Logger):
 
     def __init__(
         self,
-        s: str,
         *,
-        storage: Optional['CLNStorage'] = None,
-        encoder=None,
-        upgrader=None,
+        s: str,
+        storage: CLNStorage,
+        logger: PluginLogger
     ):
         # Logger.__init__(self)
-        self.logger = get_plugin_logger()
+        self.logger = logger
         self.lock = threading.RLock()
         self.storage = storage
-        self.encoder = encoder
+        self.encoder = None
         self.pending_changes = []
         self._modified = False
         # load data
         data = self.load_data(s)
-        if upgrader:
-            data, was_upgraded = upgrader(data)
-            self._modified |= was_upgraded
         # convert to StoredDict
         self.data = StoredDict(data, self, [])
         # write file in case there was a db upgrade
