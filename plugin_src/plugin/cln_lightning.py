@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import NamedTuple, Optional, Callable, Awaitable, Dict, List, Tuple
 from enum import IntEnum
 import threading
@@ -6,6 +7,7 @@ import threading
 from pyln.client import LightningRpc
 
 from .cln_logger import PluginLogger
+from .cln_plugin import CLNPlugin
 from .crypto import sha256
 from .invoices import PR_UNPAID, PR_PAID, Invoice, BaseInvoice
 from .json_db import JsonDB
@@ -29,8 +31,9 @@ SENT = Direction.SENT
 RECEIVED = Direction.RECEIVED
 
 class CLNLightning:
-    def __init__(self, *, plugin_rpc: LightningRpc, config: PluginConfig, db: JsonDB, logger: PluginLogger):
-        self.rpc = plugin_rpc
+    def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
+        self.rpc = plugin_instance.plugin.rpc
+        plugin_instance.plugin.add_hook("htlc_accepted", self.plugin_htlc_accepted_hook)  # register hook to listen for HTLCs
         self.config = config
         self.db = db
         self.logger = logger
@@ -40,6 +43,10 @@ class CLNLightning:
         self.preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
         self._invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
         self.logger.debug("CLNLightning initialized")
+
+    def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs):
+        print("htlc_accepted hook called print", file=sys.stderr)
+        self.logger.debug("htlc_accepted hook called")
 
     def register_hold_invoice(self, payment_hash: bytes, cb: Callable[[bytes], Awaitable[None]]):
         self.hold_invoice_callbacks[payment_hash] = cb
