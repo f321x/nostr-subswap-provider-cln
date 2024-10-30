@@ -33,7 +33,7 @@ RECEIVED = Direction.RECEIVED
 class CLNLightning:
     def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
         self.rpc = plugin_instance.plugin.rpc
-        plugin_instance.plugin.add_hook("htlc_accepted", self.plugin_htlc_accepted_hook)  # register hook to listen for HTLCs
+        plugin_instance.init_hook()
         self.config = config
         self.db = db
         self.logger = logger
@@ -46,6 +46,7 @@ class CLNLightning:
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs):
         print("htlc_accepted hook called print", file=sys.stderr)
+        print(htlc, file=sys.stdout)
         self.logger.debug("htlc_accepted hook called")
 
     def register_hold_invoice(self, payment_hash: bytes, cb: Callable[[bytes], Awaitable[None]]):
