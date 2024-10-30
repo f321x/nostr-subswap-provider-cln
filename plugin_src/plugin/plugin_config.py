@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import attr
 import os
 import electrum_ecc as ecc
@@ -11,21 +13,21 @@ from .cln_logger import PluginLogger
 class PluginConfig:
 
     """Simple configuration class for swap server"""
-    def __init__(self, plugin: CLNPlugin):
-        self.nostr_keypair = Keypair.from_private_key(plugin.derive_secret("NOSTRSECRET"))
+    def __init__(self, *, nostr_secret: bytes, logger: PluginLogger):
+        self.nostr_keypair = Keypair.from_private_key(nostr_secret) # plugin.derive_secret("NOSTRSECRET"))
 
         self.nostr_relays: [Relay] = []
         self.swapserver_fee_millionths: int = 10_000
         self.confirmation_speed_target_blocks: int = 10
         self.fallback_fee_sat_per_vb:int = 60
-        self.logger = PluginLogger("swap-provider", plugin, level="DEBUG")
-
+        self.logger = logger  # PluginLogger("swap-provider", plugin, level="DEBUG")
 
     @classmethod
-    def from_env(cls, plugin: CLNPlugin) -> 'PluginConfig':
+    def from_env(cls, *, nostr_secret: bytes, logger: PluginLogger) -> 'PluginConfig':
         """Load configuration from .env file or environment variables"""
         load_dotenv()
-        config = PluginConfig(plugin)
+        config = PluginConfig(nostr_secret=nostr_secret,
+                              logger=logger)
 
         if relays := os.getenv("NOSTR_RELAYS"):
             config.nostr_relays.extend(Relay(url=url.strip()) for url in relays.split(","))
@@ -56,7 +58,7 @@ class PluginConfig:
             config.logger.warning(f"No FALLBACK_FEE_SATSVB set in env. Using default of {config.fallback_fee_sat_per_vb}")
 
         if log_level := os.getenv("PLUGIN_LOG_LEVEL"):
-            config.logger = PluginLogger("swap-provider", plugin, level=log_level.strip())
+            config.logger.change_level(log_level.strip())
 
         config.logger.debug(f"Loaded configuration: {config}")
         return config

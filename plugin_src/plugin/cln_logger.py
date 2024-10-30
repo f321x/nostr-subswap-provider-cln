@@ -1,13 +1,12 @@
-from typing import Optional
-from .cln_plugin import CLNPlugin
+from typing import Optional, Callable
 from .globals import set_plugin_logger_global
 
 
 class PluginLogger:
     """Logger class that is compatible with the CLN logging standard (formatting and to stderr)"""
-    def __init__(self, name: str, plugin: CLNPlugin, level: Optional[str] = "INFO"):
+    def __init__(self, name: str, plugin_log_method: Callable[..., None], level: Optional[str] = "INFO"):
         self.level = level
-        self.logger = plugin.plugin.log
+        self.logger = plugin_log_method
         set_plugin_logger_global(self)
 
     def debug(self, msg: str):
@@ -29,6 +28,9 @@ class PluginLogger:
         if self.is_enabled("ERROR"):
             msg = f"ERROR: {msg}"  # CLN/plugin doesnt support ERROR
             self.logger(msg, level="info")
+
+    def change_level(self, level: str):
+        self.level = level
 
     def is_enabled(self, level: str) -> bool:
         """

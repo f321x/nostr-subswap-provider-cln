@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import sys
-from .cln_plugin import CLNPlugin
+from collections.abc import Callable
 from .globals import get_plugin_logger
 
 
@@ -13,10 +13,10 @@ class CLNStorage:  # (Logger):
     read_key = "swap-provider"  # db key we need to read from (all children are returned)
     write_key = ["swap-provider", "jsondb"]  # the child key we write to
 
-    def __init__(self, *, cln_plugin: CLNPlugin):
+    def __init__(self, *, db_string_writer: Callable, db_string_reader: Callable):
         self.logger = get_plugin_logger()
-        self.dbwriter = cln_plugin.plugin.rpc.datastore
-        self.dbreader = cln_plugin.plugin.rpc.listdatastore
+        self.dbwriter = db_string_writer
+        self.dbreader = db_string_reader
         self.pos = None
         self.init_pos = None
         self.initialized = False

@@ -20,6 +20,7 @@ from . import constants, lnutil
 from .cln_chain import CLNChainWallet
 from .cln_lightning import CLNLightning
 from .plugin_config import PluginConfig
+from .cln_logger import PluginLogger
 
 # from .address_synchronizer import TX_HEIGHT_LOCAL
 
@@ -149,9 +150,9 @@ class SwapManager:
     # network: Optional['Network'] = None
     # lnwatcher: Optional['LNWalletWatcher'] = None
 
-    def __init__(self, *, wallet: 'CLNChainWallet', lnworker: 'CLNLightning',
-                 db: 'JsonDB', plugin_config: 'PluginConfig'):
-        self.logger = plugin_config.logger
+    def __init__(self, *, wallet: CLNChainWallet, lnworker: CLNLightning,
+                 db: JsonDB, plugin_config: PluginConfig, logger: PluginLogger):
+        self.logger = logger
         self.normal_fee = None
         self.lockup_fee = None
         self.claim_fee = None  # part of the boltz prococol, not used by Electrum

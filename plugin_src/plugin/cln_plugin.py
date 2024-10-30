@@ -5,6 +5,7 @@ import asyncio
 class CLNPlugin:
     def __init__(self):
         self.plugin = Plugin()
+        self.plugin.add_hook("htlc_hook", self._htlc_accepted, )
         self.thread = asyncio.to_thread(self.plugin.run)  # the plugin is blocking to read stdin so we run it in a thread
 
     def __await__(self):
@@ -27,7 +28,6 @@ class CLNPlugin:
         assert len(secret_bytes) == 32
         return secret_bytes
 
-
-    # def _htlc_accepted(self, payload: dict):
-    #     """Called when a new HTLC is accepted"""
-    #     # do something with the payload
+    def _htlc_accepted(self, payload: dict):
+        """Called when a new HTLC is accepted"""
+        # do something with the payload
