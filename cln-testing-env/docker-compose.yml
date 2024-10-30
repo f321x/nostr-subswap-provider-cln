@@ -13,7 +13,6 @@ services:
       - ${PWD}/fill-mempool.sh:/root/fill-mempool.sh
     networks:
       - dev-net
-    restart: always
     platform: linux/amd64
 
 # normal signet (needed to test fee estimation, kind of impossible to get signet coins)

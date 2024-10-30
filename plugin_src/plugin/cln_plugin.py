@@ -1,3 +1,4 @@
+from pycparser.ply.yacc import restart
 from pyln.client import Plugin
 import asyncio
 
@@ -5,6 +6,7 @@ import asyncio
 class CLNPlugin:
     def __init__(self):
         self.plugin = Plugin()
+        self.htlc_hook = None
         # self.plugin.add_hook("htlc_hook", self._htlc_accepted, )
         self.thread = asyncio.to_thread(self.plugin.run)  # the plugin is blocking to read stdin so we run it in a thread
 
@@ -17,6 +19,11 @@ class CLNPlugin:
                 raise Exception("Plugin not running")
             return self
         return _check_running().__await__()
+
+    def htlc_hook_handler(self, onion, htlc, request, plugin, *args, ** kwargs):
+        if self.htlc_hook is None:
+           return {"result": "continue"}
+        return self.htlc_hook(onion, htlc, request, plugin, *args, **kwargs)
 
     def derive_secret(self, derivation_str: str) -> bytes:
         """Derive a secret from CLN HSM secret (for use as Nostr secret)"""
