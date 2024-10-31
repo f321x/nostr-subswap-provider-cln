@@ -13,10 +13,7 @@ class CLNPlugin:
         self.plugin = Plugin()
         self._htlc_hook = None  # type: Optional[Callable[..., JSONType]]
         self._hook_ready = Event()
-        # self._shutdown_handler = None
-        # self._shutdown_ready = Event()
         self.plugin.add_hook("htlc_accepted", self._htlc_hook_handler)
-        # self.plugin.add_subscription("shutdown", self._shutdown_event_handler)
         self._thread = asyncio.to_thread(self.plugin.run)  # the plugin is blocking to read stdin so we run it in a thread
 
     def __await__(self):
@@ -38,17 +35,6 @@ class CLNPlugin:
     def set_htlc_hook(self, hook: Callable[..., JSONType]) -> None:
         self._htlc_hook = hook
         self._hook_ready.set()
-
-    # def _shutdown_event_handler(self, **kwargs: dict[str, Any]) -> None:
-    #     """Shutdown event handler, calls the hook in self.shutdown_handler"""
-    #     print("shutdown_event_handler", file=sys.stderr)
-    #     if self._shutdown_ready.is_set():
-    #         self._shutdown_handler()
-    #
-    # def set_shutdown_handler(self, handler: Callable[..., None]) -> None:
-    #     print("set_shutdown_handler")
-    #     self._shutdown_handler = handler
-    #     self._shutdown_ready.set()
 
     def derive_secret(self, derivation_str: str) -> bytes:
         """Derive a secret from CLN HSM secret (for use as Nostr secret)"""

@@ -76,16 +76,6 @@ class CLNSwapProvider:
         await self.swap_manager.main_loop()
         raise Exception("CLNSwapProvider main loop exited unexpectedly")
 
-    # def shutdown(self):
-    #     """Shutdown handler called by CLN on shutdown"""
-    #     print("Shutting down CLNSwapProvider", file=sys.stderr)
-    #     self.logger.info("Shutting down CLNSwapProvider")
-    #     if self.swap_manager is not None:
-    #         asyncio.get_event_loop().run_until_complete(self.swap_manager.stop())
-    #     if self.json_db is not None and len(self.json_db.pending_changes) > 0:
-    #         self.json_db.write()
-    #     sys.exit(0)
-
     @property
     def is_initialized(self) -> bool:
         if (self.plugin_handler
