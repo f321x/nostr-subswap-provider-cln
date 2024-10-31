@@ -226,6 +226,7 @@ class SwapManager:
                 await group.spawn(task)
 
     async def stop(self):
+        self.logger.debug("SwapManager stop() called")
         await self.taskgroup.cancel_remaining()
 
 #     def create_transport(self):

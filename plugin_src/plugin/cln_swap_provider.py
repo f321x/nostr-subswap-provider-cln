@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from typing import Optional
 
 from .cln_logger import PluginLogger
@@ -22,6 +23,8 @@ class CLNSwapProvider:
         cln_lightning: Optional[CLNLightning] = None,
         swap_manager: Optional[SwapManager] = None
     ):
+        if plugin_handler is not None:
+            plugin_handler.set_shutdown_handler(self.shutdown)
         self.plugin_handler = plugin_handler
         self.logger = logger
         self.config = config
@@ -33,6 +36,7 @@ class CLNSwapProvider:
     async def initialize(self):
         # cln plugin handler
         self.plugin_handler = await CLNPlugin()
+        self.plugin_handler.set_shutdown_handler(self.shutdown)
 
         # logging to cln logs
         self.logger = PluginLogger("swap-provider", self.plugin_handler.plugin.log)
@@ -71,6 +75,15 @@ class CLNSwapProvider:
         await asyncio.sleep(100000000)
         await self.swap_manager.main_loop()
         raise Exception("CLNSwapProvider main loop exited unexpectedly")
+
+    def shutdown(self):
+        """Shutdown handler called by CLN on shutdown"""
+        self.logger.info("Shutting down CLNSwapProvider")
+        if self.swap_manager is not None:
+            asyncio.get_event_loop().run_until_complete(self.swap_manager.stop())
+        if self.json_db is not None and len(self.json_db.pending_changes) > 0:
+            self.json_db.write()
+        sys.exit(0)
 
     @property
     def is_initialized(self) -> bool:
