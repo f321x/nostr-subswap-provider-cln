@@ -1,8 +1,6 @@
-#!/usr/bin/env python
-
 import sys
 from collections.abc import Callable
-from .globals import get_plugin_logger
+from .cln_logger import PluginLogger
 
 
 class StorageReadWriteError(Exception): pass
@@ -13,8 +11,8 @@ class CLNStorage:  # (Logger):
     read_key = "swap-provider"  # db key we need to read from (all children are returned)
     write_key = ["swap-provider", "jsondb"]  # the child key we write to
 
-    def __init__(self, *, db_string_writer: Callable, db_string_reader: Callable):
-        self.logger = get_plugin_logger()
+    def __init__(self, *, db_string_writer: Callable, db_string_reader: Callable, logger: PluginLogger):
+        self.logger = logger
         self.dbwriter = db_string_writer
         self.dbreader = db_string_reader
         self.pos = None

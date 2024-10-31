@@ -240,7 +240,9 @@ class JsonDB:  # (Logger):
         #     await self.write_and_force_consolidation()
 
     def load_data(self, s: str) -> dict:
+        self.logger.debug(f"JsonDB: loading data: {s}")
         if s == '':
+            self.logger.debug('JsonDB: empty input string')
             return {}
         try:
             data = json.loads('[' + s + ']')
