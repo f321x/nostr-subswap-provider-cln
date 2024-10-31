@@ -47,9 +47,9 @@ class CLNSwapProvider:
         self.json_db = JsonDB(s=storage.read(), storage=storage, logger=self.logger)
 
         # cln chain wallet
-        self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,
-                                               config=self.config,
-                                               logger=self.logger)
+        # self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,
+        #                                        config=self.config,
+        #                                        logger=self.logger)
 
         # cln lightning handlers
         self.cln_lightning = CLNLightning(plugin_instance=self.plugin_handler,
