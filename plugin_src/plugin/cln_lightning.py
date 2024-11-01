@@ -12,6 +12,7 @@ from .json_db import JsonDB
 from .plugin_config import PluginConfig
 from .utils import call_blocking_with_timeout
 from .lnaddr import LnAddr
+from .bitcoin import COIN
 
 
 class PaymentInfo(NamedTuple):
@@ -30,35 +31,36 @@ RECEIVED = Direction.RECEIVED
 
 class CLNLightning:
     def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
-        self.rpc = plugin_instance.plugin.rpc
+        self.__rpc = plugin_instance.plugin.rpc
         plugin_instance.set_htlc_hook(self.plugin_htlc_accepted_hook)
-        self.config = config
-        self.db = db
-        self.logger = logger
-        self.hold_invoice_callbacks = {}
-        self.lock = threading.RLock()
-        self.payment_info = db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
-        self.preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
-        self._invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
-        self.logger.debug("CLNLightning initialized")
+        self.__config = config
+        self.__db = db
+        self.__logger = logger
+        self.__hold_invoice_callbacks = {}
+        self.__lock = threading.RLock()
+        self.__payment_info = db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
+        self.__preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
+        self.__invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
+        self.__logger.debug("CLNLightning initialized")
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs):
         print("htlc_accepted hook called print", file=sys.stderr)
-        self.logger.debug("htlc_accepted hook called")
+        self.__logger.debug("htlc_accepted hook called")
         return {"result": "continue"}
 
-    async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
-        retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
-        try:
-            result = await call_blocking_with_timeout(self.rpc.pay(bolt11=bolt11, retry_for=retry_for),
-                                                timeout=retry_for + 30)
-        except Exception as e:
-            return False, "pay_invoice call to CLN failed: " + str(e)
-
-        # check if the payment was successful, currently we assume it failed if it's not "complete"
-        if 'payment_preimage' in result and result['payment_preimage'] and result['status'] == 'complete':
-            return True, result['payment_preimage']
-        return False, result
+    # async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
+    #     retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
+    #     try:
+    #         result = await call_blocking_with_timeout(self.rpc.pay(bolt11=bolt11, retry_for=retry_for),
+    #                                             timeout=retry_for + 30)
+    #     except Exception as e:
+    #         return False, "pay_invoice call to CLN failed: " + str(e)
+    #
+    #     # check if the payment was successful, currently we assume it failed if it's not "complete"
+    #     if 'payment_preimage' in result and result['payment_preimage'] and result['status'] == 'complete':
+    #     :TODO is complete suitable?
+    #         return True, result['payment_preimage']
+    #     return False, result
 
     def create_payment_info(self, *, amount_msat: Optional[int], write_to_disk=True) -> bytes:
         payment_preimage = os.urandom(32)
@@ -67,40 +69,40 @@ class CLNLightning:
         self.save_preimage(payment_hash, payment_preimage, write_to_disk=False)
         self.save_payment_info(info, write_to_disk=False)
         if write_to_disk:
-            self.db.write()
+            self.__db.write()
         return payment_hash
 
     def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
         if sha256(preimage) != payment_hash:
-            raise Exception("tried to save incorrect preimage for payment_hash")
-        self.preimages[payment_hash.hex()] = preimage.hex()
+            raise InvalidPreimageSavedError("tried to save incorrect preimage for payment_hash")
+        self.__preimages[payment_hash.hex()] = preimage.hex()
         if write_to_disk:
-            self.db.write()
+            self.__db.write()
 
     def save_payment_info(self, info: PaymentInfo, *, write_to_disk: bool = True) -> None:
         key = info.payment_hash.hex()
         assert info.status in SAVED_PR_STATUS
-        with self.lock:
-            self.payment_info[key] = info.amount_msat, info.direction, info.status
+        with self.__lock:
+            self.__payment_info[key] = info.amount_msat, info.direction, info.status
         if write_to_disk:
-            self.db.write()
+            self.__db.write()
 
-    async def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
+    def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
         key = invoice.get_id()
         if not invoice.is_lightning():
             raise NotImplementedError("save_invoice: only lightning invoices are supported")
-        self._invoices[key] = invoice
+        self.__invoices[key] = invoice
         if write_to_disk:
-            await self.db.write()
+            self.__db.write()
 
     def get_invoice(self, key: str) -> Optional[Invoice]:
-        return self._invoices.get(key)
+        return self.__invoices.get(key)
 
     def delete_invoice(self, key: str) -> None:
-        inv = self._invoices.pop(key)
+        inv = self.__invoices.pop(key)
         if inv is None:
             return
-        self.db.write()
+        self.__db.write()
 
     def get_regular_bolt11_invoice(  # we generate the preimage
             self, *,
@@ -118,7 +120,7 @@ class CLNLightning:
         amount_msat = "any" if amount_msat is None else amount_msat
 
         try:
-            result = self.rpc.invoice(amount_msat=amount_msat,  # any for 0 amount invoices
+            result = self.__rpc.invoice(amount_msat=amount_msat,  # any for 0 amount invoices
                                                     label=label_hex,  # unique internal identifier
                                                     description=message,
                                                     expiry=expiry,
@@ -129,22 +131,131 @@ class CLNLightning:
                                                     )
             bolt11 = result['bolt11']
         except Exception as e:
-            raise Exception("get_bolt11_invoice call to CLN failed: " + str(e))
+            raise ClnRpcError("get_bolt11_invoice call to CLN failed: " + str(e))
         return bolt11, label_hex
 
     def register_hold_invoice(self, payment_hash: bytes, callback: Callable):
-        self.hold_invoice_callbacks[payment_hash] = callback
+        self.__hold_invoice_callbacks[payment_hash] = callback
 
     def unregister_hold_invoice(self, payment_hash: bytes):
-        self.hold_invoice_callbacks.pop(payment_hash)
+        self.__hold_invoice_callbacks.pop(payment_hash)
 
-    def b11invoice_from_hash(self, *, payment_hash: bytes,
+    def save_forwarding_failure(self, payment_key_hex: str, failure_msg: str):
+        pass
+
+    def b11invoice_from_hash(self, *,
+            payment_hash: bytes,
             amount_msat: Optional[int],
             message: str,
             expiry: int,  # expiration of invoice (in seconds, relative)
             fallback_address: Optional[str],
             min_final_cltv_expiry_delta: Optional[int] = None) -> str:
-        pass
+        if len(payment_hash) != 64:
+            raise InvalidInvoiceCreationError("b11invoice_from_hash: payment_hash "
+                                              "must be 32 bytes, was " + str(len(payment_hash)))
+        if len(self.__rpc.listinvoices(payment_hash=payment_hash.hex())["invoices"]) > 0:
+            raise DuplicateInvoiceCreationError("b11invoice_from_hash: "
+                                                "invoice already exists in cln: " + payment_hash.hex())
+
+        # bolt11 = self._encoder.encode(
+        #     payment_hash,
+        #     amount_msat,
+        #     description,
+        #     expiry,
+        #     min_final_cltv_expiry,
+        #     route_hints=route_hints,
+        # )
+        lnaddr = LnAddr(
+            paymenthash=payment_hash,
+            amount=(amount_msat/1000)/COIN,
+            tags=[
+                     ('d', message),
+                     ('c', min_final_cltv_expiry_delta),
+                     ('x', expiry),
+                     ('9', invoice_features),
+                     ('f', fallback_address),
+                 ] + routing_hints,
+            date=timestamp,
+            payment_secret=payment_secret)
+        invoice = lnencode(lnaddr, self.node_keypair.privkey)
+        # try
+        signed = self._plugin.rpc.call(
+            "signinvoice",
+            {
+                "invstring": bolt11,
+            },
+        )["bolt11"]
+
+        try:
+            hi = HoldInvoice(
+                state=InvoiceState.Unpaid,
+                bolt11=signed,
+                amount_msat=amount_msat,
+                payment_hash=payment_hash,
+                payment_preimage=None,
+                htlcs=Htlcs(),
+                created_at=time_now(),
+            )
+            self.ds.save_invoice(hi)
+            self.tracker.send_update(hi.payment_hash, hi.bolt11, hi.state)
+            self._plugin.log(f"Added hold invoice {payment_hash} for {amount_msat}")
+        except RpcError as e:
+            # noinspection PyTypeChecker
+            if e.error["code"] == DataErrorCodes.KeyExists:
+                raise InvoiceExistsError from None
+
+            raise
+
+        return signed
+
+    def __get_route_hints(self, amount_msat: int):
+        if amount_msat is None or amount_msat is 0:
+            raise NotImplementedError  # swaps always have the amount defined
+        try:
+            available_channels = self.__rpc.listpeerchannels()["channels"]
+        except Exception as e:
+            self.__logger.error(f"__get_route_hints rpc failed: {e}")
+            return []
+
+        suitable_channels = self.__filter_suitable_recv_chans(amount_msat,
+                                                            available_channels)
+        routing_hints = []
+        for channel in suitable_channels:
+                routing_hints.append(('r', [(
+                    chan.node_id,
+                    channel["short_channel_id"],
+                    int(channel["updates"]["remote"]["fee_base_msat"]),
+                    channel["updates"]["remote"]["fee_proportional_millionths"],
+                    channel["updates"]["remote"]["cltv_expiry_delta"])]))
+
+        return routing_hints
+
+    @staticmethod
+    def __filter_suitable_recv_chans(inv_amount_msat: int, channels):
+        suitable_channels = []
+        # filter out channels that aren't private or available
+        for channel in channels:
+            if channel["private"] and channel["state"] is "CHANNELD_NORMAL":
+                suitable_channels.append(channel)
+
+        # sort by inbound capacity
+        suitable_channels.sort(key=lambda x: x["receivable_msat"], reverse=True)
+
+        # Filter out nodes that have low receive capacity compared to invoice amt.
+        # Even with MPP, below a certain threshold, including these channels probably
+        # hurts more than help, as they lead to many failed attempts for the sender.
+        selected_channels = []
+        running_sum = 0
+        cutoff_factor = 0.2  # heuristic
+        for channel in suitable_channels:
+            recv_capacity = channel["receivable_msat"]
+            chan_can_handle_payment_as_single_part = recv_capacity >= inv_amount_msat
+            chan_small_compared_to_running_sum = recv_capacity < cutoff_factor * running_sum
+            if not chan_can_handle_payment_as_single_part and chan_small_compared_to_running_sum:
+                break
+            running_sum += recv_capacity
+            selected_channels.append(channel)
+        return selected_channels[:15]
 
     def add_payment_info_for_hold_invoice(self, payment_hash: bytes, amount_msat: int):
         pass
@@ -152,6 +263,27 @@ class CLNLightning:
     def bundle_payments(self, payments: List[bytes]):
         pass
 
+    def get_preimage(self, payment_hash: bytes) -> Optional[bytes]:
+        assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"
+        preimage_hex = self.__preimages.get(payment_hash.hex())
+        if preimage_hex is None:
+            return None
+        preimage_bytes = bytes.fromhex(preimage_hex)
+        if sha256(preimage_bytes) != payment_hash:
+            raise InvalidPreimageFoundError("found incorrect preimage for payment_hash")
+        return preimage_bytes
+
+    def num_sats_can_receive(self) -> int:
+        """returns max inbound capacity"""
+        pass
+
+    # def get_payments(self, *, status=None) -> Mapping[bytes, List[HTLCWithStatus]]:
+    #     out = defaultdict(list)
+    #     for chan in self.channels.values():
+    #         d = chan.get_payments(status=status)
+    #         for payment_hash, plist in d.items():
+    #             out[payment_hash] += plist
+    #     return out
 
     # def get_bolt11_invoice(
     #         self, *,
@@ -202,5 +334,17 @@ class CLNLightning:
     #     return pair
 
 
+class InvalidInvoiceCreationError(Exception):
+    pass
 
+class InvalidPreimageFoundError(Exception):
+    pass
 
+class ClnRpcError(Exception):
+    pass
+
+class InvalidPreimageSavedError(Exception):
+    pass
+
+class DuplicateInvoiceCreationError(Exception):
+    pass
