@@ -22,7 +22,7 @@
 # SOFTWARE.
 import os
 from typing import (Union, Any,
-                    Set)
+                    Set, NamedTuple)
 from datetime import datetime
 import decimal
 from decimal import Decimal
@@ -1197,30 +1197,30 @@ def log_exceptions(func):
 #         with self.lock:
 #             return func(self, *args, **kwargs)
 #     return func_wrapper
-#
-#
-# class TxMinedInfo(NamedTuple):
-#     height: int                        # height of block that mined tx
-#     conf: Optional[int] = None         # number of confirmations, SPV verified. >=0, or None (None means unknown)
-#     timestamp: Optional[int] = None    # timestamp of block that mined tx
-#     txpos: Optional[int] = None        # position of tx in serialized block
-#     header_hash: Optional[str] = None  # hash of block that mined tx
-#     wanted_height: Optional[int] = None  # in case of timelock, min abs block height
-#
-#     def short_id(self) -> Optional[str]:
-#         if self.txpos is not None and self.txpos >= 0:
-#             assert self.height > 0
-#             return f"{self.height}x{self.txpos}"
-#         return None
-#
-#     # def is_local_like(self) -> bool:
-#     #     """Returns whether the tx is local-like (LOCAL/FUTURE)."""
-#     #     from .address_synchronizer import TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT
-#     #     if self.height > 0:
-#     #         return False
-#     #     if self.height in (TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT):
-#     #         return False
-#     #     return True
+
+
+class TxMinedInfo(NamedTuple):
+    height: int                        # height of block that mined tx
+    conf: Optional[int] = None         # number of confirmations, SPV verified. >=0, or None (None means unknown)
+    timestamp: Optional[int] = None    # timestamp of block that mined tx
+    txpos: Optional[int] = None        # position of tx in serialized block
+    header_hash: Optional[str] = None  # hash of block that mined tx
+    wanted_height: Optional[int] = None  # in case of timelock, min abs block height
+
+    def short_id(self) -> Optional[str]:
+        if self.txpos is not None and self.txpos >= 0:
+            assert self.height > 0
+            return f"{self.height}x{self.txpos}"
+        return None
+
+    # def is_local_like(self) -> bool:
+    #     """Returns whether the tx is local-like (LOCAL/FUTURE)."""
+    #     from .address_synchronizer import TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT
+    #     if self.height > 0:
+    #         return False
+    #     if self.height in (TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT):
+    #         return False
+    #     return True
 
 
 class ShortID(bytes):
