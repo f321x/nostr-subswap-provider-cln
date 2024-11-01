@@ -85,7 +85,7 @@ class CLNChainWallet:
             self.logger.error("get_chain_fee failed to call feerates rpc: %s. Using fallback feerate", e)
 
         prev_blockcount, feerate_pervb = 0, None
-        for feerate in feerates:  # get feerate closest to confirmation target
+        for feerate in feerates:  # get feerate closest to confirmation target todo: we could also interpolate
             if speed_target_blocks >= feerate['blockcount'] > prev_blockcount:
                 prev_blockcount = feerate['blockcount']
                 feerate_pervb = feerate['smoothed_feerate'] / 1000

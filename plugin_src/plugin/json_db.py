@@ -253,7 +253,7 @@ class JsonDB:  # (Logger):
             elif r := self.maybe_load_incomplete_data(s):
                 data, patches = r, []
             else:
-                raise WalletFileException("Cannot read wallet file. (parsing failed)")
+                raise WalletFileException("Cannot read wallet file. (parsing failed). Content: " + s)
         if not isinstance(data, dict):
             raise WalletFileException("Malformed wallet file (not dict)")
         if patches:

@@ -7,6 +7,7 @@ from .cln_plugin import CLNPlugin
 from .cln_chain import CLNChainWallet
 from .cln_lightning import CLNLightning
 from .plugin_config import PluginConfig
+from .chain_monitor import ChainMonitor
 from .cln_storage import CLNStorage
 from .json_db import JsonDB
 from .submarine_swaps import SwapManager
@@ -23,8 +24,6 @@ class CLNSwapProvider:
         cln_lightning: Optional[CLNLightning] = None,
         swap_manager: Optional[SwapManager] = None
     ):
-        if plugin_handler is not None:
-            plugin_handler.set_shutdown_handler(self.shutdown)
         self.plugin_handler = plugin_handler
         self.logger = logger
         self.config = config
@@ -49,6 +48,9 @@ class CLNSwapProvider:
                              db_string_reader=self.plugin_handler.plugin.rpc.listdatastore,
                              logger=self.logger)
         self.json_db = JsonDB(s=storage.read(), storage=storage, logger=self.logger)
+
+
+        # self.chain_monitor = ChainMonitor(config=self.config)
 
         # cln chain wallet
         # self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,

@@ -1,10 +1,8 @@
 import os
 import sys
-from typing import NamedTuple, Optional, Callable, Awaitable, Dict, List, Tuple
+from typing import NamedTuple, Optional, Callable, Awaitable, Dict, List, Tuple, Sequence
 from enum import IntEnum
 import threading
-
-from pyln.client import LightningRpc
 
 from .cln_logger import PluginLogger
 from .cln_plugin import CLNPlugin
@@ -48,12 +46,6 @@ class CLNLightning:
         print("htlc_accepted hook called print", file=sys.stderr)
         self.logger.debug("htlc_accepted hook called")
         return {"result": "continue"}
-
-    def register_hold_invoice(self, payment_hash: bytes, cb: Callable[[bytes], Awaitable[None]]):
-        self.hold_invoice_callbacks[payment_hash] = cb
-
-    def unregister_hold_invoice(self, payment_hash: bytes):
-        self.hold_invoice_callbacks.pop(payment_hash)
 
     async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
         retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
@@ -139,6 +131,27 @@ class CLNLightning:
         except Exception as e:
             raise Exception("get_bolt11_invoice call to CLN failed: " + str(e))
         return bolt11, label_hex
+
+    def register_hold_invoice(self, payment_hash: bytes, callback: Callable):
+        self.hold_invoice_callbacks[payment_hash] = callback
+
+    def unregister_hold_invoice(self, payment_hash: bytes):
+        self.hold_invoice_callbacks.pop(payment_hash)
+
+    def b11invoice_from_hash(self, *, payment_hash: bytes,
+            amount_msat: Optional[int],
+            message: str,
+            expiry: int,  # expiration of invoice (in seconds, relative)
+            fallback_address: Optional[str],
+            min_final_cltv_expiry_delta: Optional[int] = None) -> str:
+        pass
+
+    def add_payment_info_for_hold_invoice(self, payment_hash: bytes, amount_msat: int):
+        pass
+
+    def bundle_payments(self, payments: List[bytes]):
+        pass
+
 
     # def get_bolt11_invoice(
     #         self, *,

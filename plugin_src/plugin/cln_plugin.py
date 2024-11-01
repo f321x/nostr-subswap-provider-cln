@@ -1,40 +1,40 @@
 from typing import Callable
-from typing import Optional, Any
-
 from pyln.client.plugin import JSONType
 from pyln.client import Plugin
 from threading import Event
 import asyncio
-import sys
 
 
 class CLNPlugin:
     def __init__(self):
         self.plugin = Plugin()
-        self._htlc_hook = None  # type: Optional[Callable[..., JSONType]]
-        self._hook_ready = Event()
-        self.plugin.add_hook("htlc_accepted", self._htlc_hook_handler)
-        self._thread = asyncio.to_thread(self.plugin.run)  # the plugin is blocking to read stdin so we run it in a thread
+        self.__htlc_hook = None
+        self.__hook_ready = Event()
+        self.plugin.add_hook("htlc_accepted", self.__htlc_hook_handler)
+        # Create but don't start the thread yet
+        self.__thread = None
+        self.__task = None
 
     def __await__(self):
-        async def _check_running():
-            """Check if plugin.run() has returned in the thread, if so the handshake with CLN failed"""
-            task = asyncio.create_task(self._thread)  # temporarily create a task to check if the plugin is running
-            await asyncio.sleep(5)  # sleep some time to leave the plugin time to do CLN handshake
-            if task.done():
-                raise Exception("Plugin not running")
+        async def __run():
+            self.__thread = asyncio.to_thread(self.plugin.run)
+            self.__task = await asyncio.create_task(self.__thread)
+            await asyncio.sleep(5)
+            if self.__task.done():
+                raise Exception("Plugin failed to start.")
             return self
-        return _check_running().__await__()
 
-    def _htlc_hook_handler(self, onion, htlc, request, plugin, *args, ** kwargs) -> JSONType:
+        return __run().__await__()
+
+    def __htlc_hook_handler(self, onion, htlc, request, plugin, *args, ** kwargs) -> JSONType:
         """Dynamic htlc hook handler, calls the hook in self.htlc_hook"""
-        if not self._hook_ready.is_set():
+        if not self.__hook_ready.is_set():
             return {"result": "continue"}
-        return self._htlc_hook(onion, htlc, request, plugin, *args, **kwargs)
+        return self.__htlc_hook(onion, htlc, request, plugin, *args, **kwargs)
 
     def set_htlc_hook(self, hook: Callable[..., JSONType]) -> None:
-        self._htlc_hook = hook
-        self._hook_ready.set()
+        self.__htlc_hook = hook
+        self.__hook_ready.set()
 
     def derive_secret(self, derivation_str: str) -> bytes:
         """Derive a secret from CLN HSM secret (for use as Nostr secret)"""
