@@ -1727,15 +1727,15 @@ class OldTaskGroup(aiorpcx.TaskGroup):
 #     except ValueError:
 #         pass  # not an IP
 #     return False
-#
-#
-# def list_enabled_bits(x: int) -> Sequence[int]:
-#     """e.g. 77 (0b1001101) --> (0, 2, 3, 6)"""
-#     binary = bin(x)[2:]
-#     rev_bin = reversed(binary)
-#     return tuple(i for i, b in enumerate(rev_bin) if b == '1')
-#
-#
+
+
+def list_enabled_bits(x: int) -> Sequence[int]:
+    """e.g. 77 (0b1001101) --> (0, 2, 3, 6)"""
+    binary = bin(x)[2:]
+    rev_bin = reversed(binary)
+    return tuple(i for i, b in enumerate(rev_bin) if b == '1')
+
+
 # def resolve_dns_srv(host: str):
 #     # FIXME this method is not using the network proxy. (although the proxy might not support UDP?)
 #     srv_records = dns.resolver.resolve(host, 'SRV')

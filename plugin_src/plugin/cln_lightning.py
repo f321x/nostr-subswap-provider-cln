@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from typing import NamedTuple, Optional, Callable, Awaitable, Dict, List, Tuple, Sequence
 from enum import IntEnum
 import threading
@@ -10,8 +11,9 @@ from .crypto import sha256
 from .invoices import PR_UNPAID, PR_PAID, Invoice, BaseInvoice
 from .json_db import JsonDB
 from .plugin_config import PluginConfig
-from .utils import call_blocking_with_timeout
-from .lnaddr import LnAddr
+from .utils import call_blocking_with_timeout, ShortID
+from .lnutil import LnFeatures
+from .lnaddr import LnAddr, lnencode_unsigned
 from .bitcoin import COIN
 
 
@@ -42,6 +44,7 @@ class CLNLightning:
         self.__preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
         self.__invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
         self.__logger.debug("CLNLightning initialized")
+        self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs):
         print("htlc_accepted hook called print", file=sys.stderr)
@@ -145,11 +148,12 @@ class CLNLightning:
 
     def b11invoice_from_hash(self, *,
             payment_hash: bytes,
-            amount_msat: Optional[int],
+            amount_msat: int,
             message: str,
             expiry: int,  # expiration of invoice (in seconds, relative)
             fallback_address: Optional[str],
             min_final_cltv_expiry_delta: Optional[int] = None) -> str:
+        assert amount_msat > 0, f"b11invoice_from_hash: amount_msat must be > 0, but got {amount_msat}"
         if len(payment_hash) != 64:
             raise InvalidInvoiceCreationError("b11invoice_from_hash: payment_hash "
                                               "must be 32 bytes, was " + str(len(payment_hash)))
@@ -157,14 +161,12 @@ class CLNLightning:
             raise DuplicateInvoiceCreationError("b11invoice_from_hash: "
                                                 "invoice already exists in cln: " + payment_hash.hex())
 
-        # bolt11 = self._encoder.encode(
-        #     payment_hash,
-        #     amount_msat,
-        #     description,
-        #     expiry,
-        #     min_final_cltv_expiry,
-        #     route_hints=route_hints,
-        # )
+        invoice_features = LnFeatures(0)
+        invoice_features |= LnFeatures.VAR_ONION_REQ
+        invoice_features |= LnFeatures.PAYMENT_SECRET_REQ
+        invoice_features |= LnFeatures.BASIC_MPP_OPT
+        # invoice_features &= LnFeatures.
+        routing_hints = self.__get_route_hints(amount_msat)
         lnaddr = LnAddr(
             paymenthash=payment_hash,
             amount=(amount_msat/1000)/COIN,
@@ -175,14 +177,14 @@ class CLNLightning:
                      ('9', invoice_features),
                      ('f', fallback_address),
                  ] + routing_hints,
-            date=timestamp,
-            payment_secret=payment_secret)
-        invoice = lnencode(lnaddr, self.node_keypair.privkey)
+            date=int(time.time()),
+            payment_secret=self.__get_payment_secret(payment_hash))
+        b11invoice_unsigned: str = lnencode_unsigned(lnaddr)
         # try
-        signed = self._plugin.rpc.call(
+        signed = self.__rpc.call(
             "signinvoice",
             {
-                "invstring": bolt11,
+                "invstring": b11invoice_unsigned,
             },
         )["bolt11"]
 
@@ -221,12 +223,13 @@ class CLNLightning:
                                                             available_channels)
         routing_hints = []
         for channel in suitable_channels:
-                routing_hints.append(('r', [(
-                    chan.node_id,
-                    channel["short_channel_id"],
-                    int(channel["updates"]["remote"]["fee_base_msat"]),
-                    channel["updates"]["remote"]["fee_proportional_millionths"],
-                    channel["updates"]["remote"]["cltv_expiry_delta"])]))
+            short_id = ShortID.from_str(channel["short_channel_id"])
+            routing_hints.append(('r', [(
+                bytes.fromhex(channel["peer_id"]),
+                short_id,
+                int(channel["updates"]["remote"]["fee_base_msat"]),
+                int(channel["updates"]["remote"]["fee_proportional_millionths"]),
+                int(channel["updates"]["remote"]["cltv_expiry_delta"]))]))
 
         return routing_hints
 
@@ -256,6 +259,9 @@ class CLNLightning:
             running_sum += recv_capacity
             selected_channels.append(channel)
         return selected_channels[:15]
+
+    def __get_payment_secret(self, payment_hash: bytes) -> bytes:
+        return sha256(sha256(self.__payment_secret_key) + payment_hash)
 
     def add_payment_info_for_hold_invoice(self, payment_hash: bytes, amount_msat: int):
         pass
