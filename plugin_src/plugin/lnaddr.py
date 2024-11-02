@@ -155,7 +155,7 @@ def pull_tagged(data5: bytearray) -> Tuple[str, Sequence[int]]:
     return ret
 
 
-def lnencode(addr: 'LnAddr', privkey) -> str:
+def lnencode_unsigned(addr: 'LnAddr') -> str:
     if addr.amount:
         amount = addr.net.BOLT11_HRP + shorten_amount(addr.amount)
     else:
@@ -240,15 +240,16 @@ def lnencode(addr: 'LnAddr', privkey) -> str:
     if 'd' not in tags_set and 'h' not in tags_set:
         raise ValueError("Must include either 'd' or 'h'")
 
+    # We sign externally with the Core Lightning RPC
     # We actually sign the hrp, then data (padded to 8 bits with zeroes).
-    msg = hrp.encode("ascii") + bytes(convertbits(data5, 5, 8))
-    msg32 = sha256(msg).digest()
-    privkey = ecc.ECPrivkey(privkey)
-    sig = privkey.ecdsa_sign_recoverable(msg32, is_compressed=False)
-    recovery_flag = bytes([sig[0] - 27])
-    sig = bytes(sig[1:]) + recovery_flag
-    sig = bytes(convertbits(sig, 8, 5, False))
-    data5 += sig
+    # msg = hrp.encode("ascii") + bytes(convertbits(data5, 5, 8))
+    # msg32 = sha256(msg).digest()
+    # privkey = ecc.ECPrivkey(privkey)
+    # sig = privkey.ecdsa_sign_recoverable(msg32, is_compressed=False)
+    # recovery_flag = bytes([sig[0] - 27])
+    # sig = bytes(sig[1:]) + recovery_flag
+    # sig = bytes(convertbits(sig, 8, 5, False))
+    # data5 += sig
 
     return bech32_encode(segwit_addr.Encoding.BECH32, hrp, data5)
 
