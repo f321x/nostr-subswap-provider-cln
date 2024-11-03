@@ -50,8 +50,21 @@ class CLNLightning:
         self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs):
-        print("htlc_accepted hook called print", file=sys.stderr)
         self.__logger.debug("htlc_accepted hook called")
+        if "forward_to" in kwargs:
+            return {"result": "continue"}
+
+        with self.__lock:
+            pass
+            # invoice = hold.ds.get_invoice(htlc["payment_hash"])
+            #
+            # # Ignore invoices that aren't hold invoices
+            # if invoice is None:
+            #     Settler.continue_callback(request)
+            #     return
+            #
+            # hold.handler.handle_htlc(invoice, htlc, onion, request)
+            #
         return {"result": "continue"}
 
     # async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
