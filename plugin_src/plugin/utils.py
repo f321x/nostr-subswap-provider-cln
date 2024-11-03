@@ -29,7 +29,7 @@ from decimal import Decimal
 import locale
 import asyncio
 import time
-from typing import Optional
+from typing import Optional, Sequence
 import functools
 from functools import partial
 from .globals import get_plugin_logger
