@@ -30,7 +30,7 @@ from .utils import list_enabled_bits
 # from .lnaddr import lndecode
 # from .bip32 import BIP32Node, BIP32_PRIME
 # from .transaction import BCDataStream, OPPushDataGeneric
-# from .logging import get_logger
+from .globals import get_plugin_logger
 
 
 # if TYPE_CHECKING:
@@ -40,7 +40,7 @@ from .utils import list_enabled_bits
 #     from .simple_config import SimpleConfig
 
 
-# _logger = get_logger(__name__)
+_logger = get_plugin_logger()
 
 
 # defined in BOLT-03:
@@ -74,6 +74,31 @@ def deserialize_htlc_key(htlc_key: str) -> Tuple[bytes, int]:
     scid, htlc_id = htlc_key.split(':')
     return bytes.fromhex(scid), int(htlc_id)
 
+def filter_suitable_recv_chans(inv_amount_msat: int, channels):
+    suitable_channels = []
+    # filter out channels that aren't private or available
+    for channel in channels:
+        if channel["private"] and channel["state"] is "CHANNELD_NORMAL":
+            suitable_channels.append(channel)
+
+    # sort by inbound capacity
+    suitable_channels.sort(key=lambda x: x["receivable_msat"], reverse=True)
+
+    # Filter out nodes that have low receive capacity compared to invoice amt.
+    # Even with MPP, below a certain threshold, including these channels probably
+    # hurts more than help, as they lead to many failed attempts for the sender.
+    selected_channels = []
+    running_sum = 0
+    cutoff_factor = 0.2  # heuristic
+    for channel in suitable_channels:
+        recv_capacity = channel["receivable_msat"]
+        chan_can_handle_payment_as_single_part = recv_capacity >= inv_amount_msat
+        chan_small_compared_to_running_sum = recv_capacity < cutoff_factor * running_sum
+        if not chan_can_handle_payment_as_single_part and chan_small_compared_to_running_sum:
+            break
+        running_sum += recv_capacity
+        selected_channels.append(channel)
+    return selected_channels[:15]
 
 @attr.s
 class OnlyPubkeyKeypair:

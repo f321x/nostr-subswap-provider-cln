@@ -4,15 +4,17 @@ import time
 from typing import NamedTuple, Optional, Callable, Awaitable, Dict, List, Tuple, Sequence
 from enum import IntEnum
 import threading
+from decimal import Decimal
 
 from .cln_logger import PluginLogger
 from .cln_plugin import CLNPlugin
 from .crypto import sha256
-from .invoices import PR_UNPAID, PR_PAID, Invoice, BaseInvoice
+from .invoices import PR_UNPAID, PR_PAID, Invoice, BaseInvoice, LN_EXPIRY_NEVER
 from .json_db import JsonDB
 from .plugin_config import PluginConfig
+from .submarine_swaps import MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 from .utils import call_blocking_with_timeout, ShortID
-from .lnutil import LnFeatures
+from .lnutil import LnFeatures, filter_suitable_recv_chans
 from .lnaddr import LnAddr, lnencode_unsigned
 from .bitcoin import COIN
 
@@ -43,6 +45,7 @@ class CLNLightning:
         self.__payment_info = db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
         self.__preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
         self.__invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
+        self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[str, str]  # RHASH -> bolt11
         self.__logger.debug("CLNLightning initialized")
         self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
 
@@ -161,54 +164,42 @@ class CLNLightning:
             raise DuplicateInvoiceCreationError("b11invoice_from_hash: "
                                                 "invoice already exists in cln: " + payment_hash.hex())
 
-        invoice_features = LnFeatures(0)
-        invoice_features |= LnFeatures.VAR_ONION_REQ
-        invoice_features |= LnFeatures.PAYMENT_SECRET_REQ
-        invoice_features |= LnFeatures.BASIC_MPP_OPT
-        # invoice_features &= LnFeatures.
+        invoice_features = LnFeatures.VAR_ONION_REQ | LnFeatures.PAYMENT_SECRET_REQ | LnFeatures.BASIC_MPP_OPT
         routing_hints = self.__get_route_hints(amount_msat)
         lnaddr = LnAddr(
             paymenthash=payment_hash,
-            amount=(amount_msat/1000)/COIN,
+            amount=amount_msat/Decimal(COIN*1000),
             tags=[
                      ('d', message),
-                     ('c', min_final_cltv_expiry_delta),
-                     ('x', expiry),
+                     ('c', MIN_FINAL_CLTV_DELTA_FOR_CLIENT if min_final_cltv_expiry_delta is None
+                                                                else min_final_cltv_expiry_delta),
+                     ('x', LN_EXPIRY_NEVER if expiry == 0 else expiry),
                      ('9', invoice_features),
                      ('f', fallback_address),
                  ] + routing_hints,
             date=int(time.time()),
             payment_secret=self.__get_payment_secret(payment_hash))
         b11invoice_unsigned: str = lnencode_unsigned(lnaddr)
-        # try
-        signed = self.__rpc.call(
-            "signinvoice",
-            {
-                "invstring": b11invoice_unsigned,
-            },
-        )["bolt11"]
-
         try:
-            hi = HoldInvoice(
-                state=InvoiceState.Unpaid,
-                bolt11=signed,
-                amount_msat=amount_msat,
-                payment_hash=payment_hash,
-                payment_preimage=None,
-                htlcs=Htlcs(),
-                created_at=time_now(),
-            )
-            self.ds.save_invoice(hi)
-            self.tracker.send_update(hi.payment_hash, hi.bolt11, hi.state)
-            self._plugin.log(f"Added hold invoice {payment_hash} for {amount_msat}")
-        except RpcError as e:
-            # noinspection PyTypeChecker
-            if e.error["code"] == DataErrorCodes.KeyExists:
-                raise InvoiceExistsError from None
-
-            raise
-
+             signed = self.__rpc.call(
+                 "signinvoice",
+                 {
+                     "invstring": b11invoice_unsigned,
+                 },
+             )["bolt11"]
+        except Exception as e:
+            self.__logger.error(f"b11invoice_from_hash: signinvoice rpc failed: {e}")
+            raise Bolt11InvoiceCreationError("signinvoice rpc failed: " + str(e))
+        self.__save_hold_invoice(payment_hash, signed)
         return signed
+
+    def __save_hold_invoice(self, payment_hash: bytes, bolt11: str):
+        self.__hold_invoices[payment_hash.hex()] = bolt11
+        self.__db.write()
+
+    def __delete_hold_invoice(self, payment_hash: bytes):
+        self.__hold_invoices.pop(payment_hash.hex())
+        self.__db.write()
 
     def __get_route_hints(self, amount_msat: int):
         if amount_msat is None or amount_msat is 0:
@@ -219,7 +210,7 @@ class CLNLightning:
             self.__logger.error(f"__get_route_hints rpc failed: {e}")
             return []
 
-        suitable_channels = self.__filter_suitable_recv_chans(amount_msat,
+        suitable_channels = filter_suitable_recv_chans(amount_msat,
                                                             available_channels)
         routing_hints = []
         for channel in suitable_channels:
@@ -233,32 +224,6 @@ class CLNLightning:
 
         return routing_hints
 
-    @staticmethod
-    def __filter_suitable_recv_chans(inv_amount_msat: int, channels):
-        suitable_channels = []
-        # filter out channels that aren't private or available
-        for channel in channels:
-            if channel["private"] and channel["state"] is "CHANNELD_NORMAL":
-                suitable_channels.append(channel)
-
-        # sort by inbound capacity
-        suitable_channels.sort(key=lambda x: x["receivable_msat"], reverse=True)
-
-        # Filter out nodes that have low receive capacity compared to invoice amt.
-        # Even with MPP, below a certain threshold, including these channels probably
-        # hurts more than help, as they lead to many failed attempts for the sender.
-        selected_channels = []
-        running_sum = 0
-        cutoff_factor = 0.2  # heuristic
-        for channel in suitable_channels:
-            recv_capacity = channel["receivable_msat"]
-            chan_can_handle_payment_as_single_part = recv_capacity >= inv_amount_msat
-            chan_small_compared_to_running_sum = recv_capacity < cutoff_factor * running_sum
-            if not chan_can_handle_payment_as_single_part and chan_small_compared_to_running_sum:
-                break
-            running_sum += recv_capacity
-            selected_channels.append(channel)
-        return selected_channels[:15]
 
     def __get_payment_secret(self, payment_hash: bytes) -> bytes:
         return sha256(sha256(self.__payment_secret_key) + payment_hash)
@@ -353,4 +318,7 @@ class InvalidPreimageSavedError(Exception):
     pass
 
 class DuplicateInvoiceCreationError(Exception):
+    pass
+
+class Bolt11InvoiceCreationError(Exception):
     pass
