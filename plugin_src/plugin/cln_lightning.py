@@ -41,31 +41,26 @@ class CLNLightning:
         self.__db = db
         self.__logger = logger
         self.__hold_invoice_callbacks = {}
-        self.__lock = threading.RLock()
+        self.__invoice_lock = threading.RLock()
         self.__payment_info = db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
         self.__preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
         self.__invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
-        self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[str, str]  # RHASH -> bolt11
+        self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[bytes, str]  # RHASH -> bolt11
         self.__logger.debug("CLNLightning initialized")
         self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
 
-    def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs):
+    def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs) -> None:
         self.__logger.debug("htlc_accepted hook called")
         if "forward_to" in kwargs:
-            return {"result": "continue"}
+            return request.set_result({"result": "continue"})
 
-        with self.__lock:
-            pass
-            # invoice = hold.ds.get_invoice(htlc["payment_hash"])
-            #
-            # # Ignore invoices that aren't hold invoices
-            # if invoice is None:
-            #     Settler.continue_callback(request)
-            #     return
-            #
+        with self.__invoice_lock:
+            invoice = self.get_hold_invoice(bytes.fromhex(htlc["payment_hash"]))
+            if invoice is None:  # not a hold invoice we know about
+                return request.set_result({"result": "continue"})
             # hold.handler.handle_htlc(invoice, htlc, onion, request)
-            #
-        return {"result": "continue"}
+
+        return request.set_result({"result": "continue"})
 
     # async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
     #     retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
@@ -116,6 +111,9 @@ class CLNLightning:
 
     def get_invoice(self, key: str) -> Optional[Invoice]:
         return self.__invoices.get(key)
+
+    def get_hold_invoice(self, payment_hash: bytes) -> Optional[str]:
+        return self.__hold_invoices.get(payment_hash)
 
     def delete_invoice(self, key: str) -> None:
         inv = self.__invoices.pop(key)
@@ -207,11 +205,11 @@ class CLNLightning:
         return signed
 
     def __save_hold_invoice(self, payment_hash: bytes, bolt11: str):
-        self.__hold_invoices[payment_hash.hex()] = bolt11
+        self.__hold_invoices[payment_hash] = bolt11
         self.__db.write()
 
     def __delete_hold_invoice(self, payment_hash: bytes):
-        self.__hold_invoices.pop(payment_hash.hex())
+        self.__hold_invoices.pop(payment_hash)
         self.__db.write()
 
     def __get_route_hints(self, amount_msat: int):

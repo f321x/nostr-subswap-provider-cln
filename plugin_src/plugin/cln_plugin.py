@@ -10,7 +10,7 @@ class CLNPlugin:
         self.plugin = Plugin()
         self.__htlc_hook = None
         self.__hook_ready = Event()
-        self.plugin.add_hook("htlc_accepted", self.__htlc_hook_handler)
+        self.plugin.add_hook("htlc_accepted", self.__htlc_hook_handler, background=True)
         # Create but don't start the thread yet
         self.__thread = None
         self.__task = None
@@ -26,10 +26,10 @@ class CLNPlugin:
 
         return __run().__await__()
 
-    def __htlc_hook_handler(self, onion, htlc, request, plugin, *args, ** kwargs) -> JSONType:
+    def __htlc_hook_handler(self, onion, htlc, request, plugin, *args, ** kwargs) -> None:
         """Dynamic htlc hook handler, calls the hook in self.htlc_hook"""
         if not self.__hook_ready.is_set():
-            return {"result": "continue"}
+            return request.set_result({"result": "continue"})
         return self.__htlc_hook(onion, htlc, request, plugin, *args, **kwargs)
 
     def set_htlc_hook(self, hook: Callable[..., JSONType]) -> None:
