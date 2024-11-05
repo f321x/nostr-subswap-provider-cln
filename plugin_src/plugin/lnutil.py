@@ -3,16 +3,20 @@
 # file LICENCE or http://www.opensource.org/licenses/mit-license.php
 
 from enum import IntFlag
+from datetime import datetime, timezone
 import enum
 # import json
 # from collections import defaultdict
-from typing import NamedTuple, List, Tuple, Mapping, Optional, TYPE_CHECKING, Union, Dict, Set, Sequence
+from typing import NamedTuple, List, Tuple, Mapping, Optional, TYPE_CHECKING, Union, Dict, Set, Sequence, Any
 # import re
 # import sys
 
 import electrum_ecc as ecc
 # from electrum_ecc import CURVE_ORDER, ecdsa_sig64_from_der_sig, ECPubkey, string_to_number
 import attr
+from attrs import field
+
+from .cln_lightning import InvoiceNotFoundError
 # from aiorpcx import NetAddress
 #
 # from .util import bfh, UserFacingException
@@ -107,6 +111,50 @@ class OnlyPubkeyKeypair:
 @attr.s
 class Keypair(OnlyPubkeyKeypair):
     privkey = attr.ib(type=bytes, converter=hex_to_bytes, repr=bytes_to_hex)
+
+class HtlcState(enum.StrEnum):
+    PAID = "paid"
+    ACCEPTED = "accepted"
+    CANCELLED = "cancelled"
+
+@attr.s
+class Htlc:
+    state: HtlcState = field()
+    short_channel_id: str = field()
+    channel_id: int = field()
+    amount_msat: int = field()
+    created_at: datetime = field()
+
+    @classmethod
+    def from_dict(cls: type['Htlc'], htlc_dict: dict[str, Any]) -> 'Htlc':
+        return Htlc(
+            state=HtlcState.Accepted,
+            short_channel_id=htlc_dict["short_channel_id"],
+            channel_id=htlc_dict["id"],
+            amount_msat=htlc_dict["amount_msat"],
+            created_at=datetime.now(tz=timezone.utc)
+        )
+
+class HoldInvoice:
+    def __init__(self, payment_hash: bytes, bolt11: str, amount_msat: int):
+        self.payment_hash = payment_hash
+        self.bolt11 = bolt11
+        self.amount_msat = amount_msat
+        self.incoming_htlcs = []
+        self.__associated_invoice: Optional['HoldInvoice'] = None
+
+    def attach_prepay_invoice(self, invoice: 'HoldInvoice') -> None:
+        if self.__associated_invoice is not None:
+            raise DuplicateInvoiceCreationError("HoldInvoice already has a related PrepayInvoice")
+        self.__associated_invoice = invoice
+
+    def get_prepay_invoice(self) -> 'HoldInvoice':
+        if self.__associated_invoice is None:
+            raise InvoiceNotFoundError("HoldInvoice does not have a related PrepayInvoice")
+        return self.__associated_invoice
+
+class DuplicateInvoiceCreationError(Exception):
+    pass
 
 # @attr.s
 # class ChannelConfig(StoredObject):
