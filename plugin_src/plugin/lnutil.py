@@ -135,12 +135,19 @@ class Htlc:
             created_at=datetime.now(tz=timezone.utc)
         )
 
+class InvoiceState(enum.StrEnum):
+    SETTLED = "settled"
+    PAID = "funded"
+    UNPAID = "unpaid"
+    FAILED = "failed"
+
 class HoldInvoice:
     def __init__(self, payment_hash: bytes, bolt11: str, amount_msat: int):
         self.payment_hash = payment_hash
         self.bolt11 = bolt11
         self.amount_msat = amount_msat
-        self.incoming_htlcs = []
+        self.incoming_htlcs = set()
+        self.invoice_state = InvoiceState.Unpaid
         self.__associated_invoice: Optional['HoldInvoice'] = None
 
     def attach_prepay_invoice(self, invoice: 'HoldInvoice') -> None:
