@@ -1,7 +1,7 @@
 import os
 import sys
 import time
-from typing import NamedTuple, Optional, Callable, Awaitable, Dict, List, Tuple, Sequence
+from typing import NamedTuple, Optional, Callable, Dict, Tuple, Any
 from enum import IntEnum
 import threading
 from decimal import Decimal
@@ -53,19 +53,24 @@ class CLNLightning:
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs) -> None:
         self.__logger.debug("htlc_accepted hook called")
-        if "forward_to" in kwargs:
+        if "forward_to" in kwargs:  # ignore forwards
             return request.set_result({"result": "continue"})
 
         with self.__invoice_lock:
             invoice = self.get_hold_invoice(bytes.fromhex(htlc["payment_hash"]))
             if invoice is None:  # not a hold invoice we know about
                 return request.set_result({"result": "continue"})
-            self.handle_htlc(invoice, htlc, onion, request)
-        return request.set_result({"result": "continue"})
+            return self.handle_htlc(invoice, htlc, onion, request)
 
-    def handle_htlc(self, invoice: HoldInvoice, htlc, onion, request):
-        decoded_invoice = self.__rpc.decodepay(invoice.bolt11)
+    def handle_htlc(self, invoice: HoldInvoice, htlc: dict[str, Any], onion, request):
+        try:
+            decoded_invoice = self.__rpc.decodepay(invoice.bolt11)
+        except Exception as e:
+            self.__logger.error(f"handle_htlc: decodepay rpc failed: {e}")
+            return request.set_result({"result": "continue"})
         htlc = Htlc.from_dict(htlc)
+        invoice.incoming_htlcs.add(htlc)
+
 
 
     # async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
