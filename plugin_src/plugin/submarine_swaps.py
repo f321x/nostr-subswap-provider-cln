@@ -14,7 +14,7 @@ from .transaction import PartialTxOutput, PartialTransaction, Transaction, TxOut
 from .utils import OldTaskGroup, now
 from .bitcoin import DummyAddress
 from .crypto import ripemd
-from .lnutil import hex_to_bytes
+from .lnutil import hex_to_bytes, PrepayInvoice
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants, lnutil
 from .cln_chain import CLNChainWallet
@@ -466,6 +466,7 @@ class SwapManager:
             our_privkey=our_privkey,
             prepay=True,
         )
+        # callback will be triggered when the swap invoice is paid to broadcast the funding tx
         self.lnworker.register_hold_invoice(payment_hash=payment_hash, callback=self.hold_invoice_callback)
         return swap, invoice, prepay_invoice
 
@@ -497,19 +498,20 @@ class SwapManager:
             min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
         )
         # add payment info to lnworker
-        self.lnworker.add_payment_info_for_hold_invoice(payment_hash, invoice_amount_sat)
+        # self.lnworker.add_payment_info_for_hold_invoice(payment_hash, invoice_amount_sat)
 
         if prepay:
             prepay_hash = self.lnworker.create_payment_info(amount_msat=prepay_amount_sat*1000)
-            prepay_invoice = self.lnworker.b11invoice_from_hash(
+            prepay_invoice = PrepayInvoice(self.lnworker.b11invoice_from_hash(
                 payment_hash=prepay_hash,
                 amount_msat=prepay_amount_sat * 1000,
                 message='Submarine swap mining fees',
                 expiry=300,
                 fallback_address=None,
                 min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
-            )
-            self.lnworker.bundle_payments([payment_hash, prepay_hash])
+            ), prepay_hash)
+
+            self.lnworker.bundle_payments(swap_invoice=invoice, prepay_invoice=prepay_invoice)
             self.prepayments[prepay_hash] = payment_hash
         else:
             prepay_invoice = None
@@ -535,7 +537,7 @@ class SwapManager:
         swap._payment_hash = payment_hash
         self._add_or_reindex_swap(swap)
         self.add_lnwatcher_callback(swap)
-        return swap, invoice, prepay_invoice
+        return swap, invoice.bolt11, prepay_invoice.bolt11
 
 #     def create_reverse_swap(self, *, lightning_amount_sat: int, their_pubkey: bytes) -> SwapData:
 #         """ server method. """
@@ -1115,7 +1117,7 @@ class SwapManager:
 #         }
 #         return response
 
-    async def server_create_swap(self, request):
+    def server_create_swap(self, request):
         # reverse for client, forward for server
         # requesting a normal swap (old protocol) will raise an exception
         #request = await r.json()
@@ -1341,7 +1343,7 @@ class NostrTransport:  # (Logger):
         if method == 'addswapinvoice':
             r = self.sm.server_add_swap_invoice(request)
         elif method == 'createswap':
-            r = await self.sm.server_create_swap(request)
+            r = self.sm.server_create_swap(request)
         elif method == 'createnormalswap':
             r = self.sm.server_create_normal_swap(request)
         else:
