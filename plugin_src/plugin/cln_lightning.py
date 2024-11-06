@@ -14,7 +14,7 @@ from .json_db import JsonDB
 from .plugin_config import PluginConfig
 from .submarine_swaps import MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 from .utils import call_blocking_with_timeout, ShortID
-from .lnutil import LnFeatures, filter_suitable_recv_chans, HoldInvoice, DuplicateInvoiceCreationError, Htlc
+from .lnutil import LnFeatures, filter_suitable_recv_chans, HoldInvoice, DuplicateInvoiceCreationError, Htlc, HtlcState
 from .lnaddr import LnAddr, lnencode_unsigned
 from .bitcoin import COIN
 
@@ -32,6 +32,14 @@ class Direction(IntEnum):
 SAVED_PR_STATUS = [PR_PAID, PR_UNPAID] # status that are persisted
 SENT = Direction.SENT
 RECEIVED = Direction.RECEIVED
+
+def ensure_db_write(func):
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            self.__db.write()
+    return wrapper
 
 class CLNLightning:
     def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
@@ -62,16 +70,47 @@ class CLNLightning:
                 return request.set_result({"result": "continue"})
             return self.handle_htlc(invoice, htlc, onion, request)
 
-    def handle_htlc(self, invoice: HoldInvoice, htlc: dict[str, Any], onion, request):
+    @ensure_db_write
+    def handle_htlc(self, target_invoice: HoldInvoice, incoming_htlc: dict[str, Any], onion, request) -> None:
+        """Validates and stores the incoming htlc"""
         try:
-            decoded_invoice = self.__rpc.decodepay(invoice.bolt11)
+            decoded_invoice = self.__rpc.decodepay(target_invoice.bolt11)
         except Exception as e:
             self.__logger.error(f"handle_htlc: decodepay rpc failed: {e}")
             return request.set_result({"result": "continue"})
-        htlc = Htlc.from_dict(htlc)
-        invoice.incoming_htlcs.add(htlc)
+        htlc = Htlc.from_dict(incoming_htlc)
+
+        if (existing := target_invoice.find_htlc(htlc.short_channel_id, htlc.channel_id)) is not None:
+            return  # we already received this htlc and don't have to store it again (e.g. after replay when restarting)
+            # return self.__handle_existing_invoice(target_invoice, existing, request)
+        else:
+            target_invoice.incoming_htlcs.add(htlc)
+            self.__db.write()
+
+        if incoming_htlc["cltv_expiry_relative"] < decoded_invoice["min_final_cltv_expiry"]:
+            self.__logger.warning(f"handle_htlc: Too short cltv: ({incoming_htlc['cltv_expiry_relative']} < "
+                               f"{decoded_invoice['min_final_cltv_expiry']})")
+            htlc.state = HtlcState.CANCELLED
+            self.__db.write()
+            # 400F = incorrect_or_unknown_payment_details
+            return request.set_result({"result": "fail", "failure_message": "400F"})
+
+        if "payment_secret" not in onion or onion["payment_secret"] != decoded_invoice["payment_secret"]:
+            self.__logger.warning(f"handle_htlc: htlc with incorrect payment secret for "
+                                  f"invoice {target_invoice.payment_hash}")
+            htlc.state = HtlcState.CANCELLED
+            self.__db.write()
+            return request.set_result({"result": "fail", "failure_message": "400F"})
 
 
+    # def __handle_existing_invoice(self, target_invoice: HoldInvoice, htlc: Htlc, request):
+    #     match htlc.state:
+    #         case HtlcState.Accepted:
+    #            pass
+    #         case HtlcState.Settled:
+    #             pass
+    #         case HtlcState.Cancelled:
+    #             pass
 
     # async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
     #     retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
@@ -269,6 +308,8 @@ class CLNLightning:
     def num_sats_can_receive(self) -> int:
         """returns max inbound capacity"""
         pass
+
+
 
 
 class InvalidInvoiceCreationError(Exception):
