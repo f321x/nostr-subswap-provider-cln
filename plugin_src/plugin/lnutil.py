@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import enum
 # import json
 # from collections import defaultdict
-from typing import NamedTuple, List, Tuple, Mapping, Optional, TYPE_CHECKING, Union, Dict, Set, Sequence, Any
+from typing import NamedTuple, List, Tuple, Mapping, Optional, TYPE_CHECKING, Union, Dict, Set, Sequence, Any, final
 # import re
 # import sys
 
@@ -147,7 +147,7 @@ class HoldInvoice:
         self.bolt11 = bolt11
         self.amount_msat = amount_msat
         self.incoming_htlcs = set()
-        self.invoice_state = InvoiceState.Unpaid
+        # self.invoice_state = InvoiceState.Unpaid
         self.__associated_invoice: Optional['HoldInvoice'] = None
 
     def attach_prepay_invoice(self, invoice: 'HoldInvoice') -> None:
@@ -159,6 +159,12 @@ class HoldInvoice:
         if self.__associated_invoice is None:
             raise InvoiceNotFoundError("HoldInvoice does not have a related PrepayInvoice")
         return self.__associated_invoice
+
+    def find_htlc(self, scid: str, channel_id: int) -> Htlc | None:
+        for stored_htlc in self.incoming_htlcs:
+            if stored_htlc.short_channel_id == scid and stored_htlc.channel_id == channel_id:
+                return stored_htlc
+        return None
 
 class DuplicateInvoiceCreationError(Exception):
     pass
