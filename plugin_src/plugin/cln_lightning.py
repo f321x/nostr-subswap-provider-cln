@@ -33,13 +33,13 @@ SAVED_PR_STATUS = [PR_PAID, PR_UNPAID] # status that are persisted
 SENT = Direction.SENT
 RECEIVED = Direction.RECEIVED
 
-def ensure_db_write(func):
-    def wrapper(self, *args, **kwargs):
-        try:
-            return func(self, *args, **kwargs)
-        finally:
-            self.__db.write()
-    return wrapper
+# def ensure_db_write(func):
+#     def wrapper(self, *args, **kwargs):
+#         try:
+#             return func(self, *args, **kwargs)
+#         finally:
+#             self.__db.write()
+#     return wrapper
 
 class CLNLightning:
     def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
@@ -70,7 +70,6 @@ class CLNLightning:
                 return request.set_result({"result": "continue"})
             return self.handle_htlc(invoice, htlc, onion, request)
 
-    @ensure_db_write
     def handle_htlc(self, target_invoice: HoldInvoice, incoming_htlc: dict[str, Any], onion, request) -> None:
         """Validates and stores the incoming htlc"""
         try:
@@ -101,6 +100,8 @@ class CLNLightning:
             htlc.state = HtlcState.CANCELLED
             self.__db.write()
             return request.set_result({"result": "fail", "failure_message": "400F"})
+
+
 
 
     # def __handle_existing_invoice(self, target_invoice: HoldInvoice, htlc: Htlc, request):
