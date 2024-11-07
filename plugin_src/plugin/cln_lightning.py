@@ -14,7 +14,8 @@ from .json_db import JsonDB
 from .plugin_config import PluginConfig
 from .submarine_swaps import MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 from .utils import call_blocking_with_timeout, ShortID
-from .lnutil import LnFeatures, filter_suitable_recv_chans, HoldInvoice, DuplicateInvoiceCreationError, Htlc, HtlcState
+from .lnutil import (LnFeatures, filter_suitable_recv_chans, HoldInvoice, DuplicateInvoiceCreationError, Htlc,
+                     HtlcState, InvoiceState)
 from .lnaddr import LnAddr, lnencode_unsigned
 from .bitcoin import COIN
 
@@ -66,42 +67,65 @@ class CLNLightning:
 
         with self.__invoice_lock:
             invoice = self.get_hold_invoice(bytes.fromhex(htlc["payment_hash"]))
-            if invoice is None:  # not a hold invoice we know about
+            if invoice is None or invoice.funding_status:  # not a hold invoice we know about
                 return request.set_result({"result": "continue"})
-            return self.handle_htlc(invoice, htlc, onion, request)
 
-    def handle_htlc(self, target_invoice: HoldInvoice, incoming_htlc: dict[str, Any], onion, request) -> None:
-        """Validates and stores the incoming htlc"""
+            # htlc that affects one of our stored hold invoices
+            try:
+                if self.handle_htlc(invoice, htlc, onion, request):
+                    self.__db.write()  # saves the changes to the invoice
+            except Exception as e:
+                self.__logger.error(f"plugin_htlc_accepted_hook: {e}")
+                return request.set_result({"result": "continue"})
+
+    def handle_htlc(self, target_invoice: HoldInvoice, incoming_htlc: dict[str, Any], onion, request) -> bool:
+        """Validates and stores the incoming htlc, returns True if changes need to be saved in db"""
+        htlc = Htlc.from_dict(incoming_htlc, request)
+        if (existing := target_invoice.find_htlc(htlc.short_channel_id, htlc.channel_id)) is not None:
+            return False # we already received this htlc and don't have to store it again (e.g. after replay when restarting)
+            # return self.__handle_existing_invoice(target_invoice, existing, request)
+        else:
+            # add the htlc to the invoice
+            target_invoice.incoming_htlcs.add(htlc)
+
         try:
+            # decode target invoice using cln rpc
             decoded_invoice = self.__rpc.decodepay(target_invoice.bolt11)
         except Exception as e:
             self.__logger.error(f"handle_htlc: decodepay rpc failed: {e}")
-            return request.set_result({"result": "continue"})
-        htlc = Htlc.from_dict(incoming_htlc)
+            htlc.fail()
+            return True
 
-        if (existing := target_invoice.find_htlc(htlc.short_channel_id, htlc.channel_id)) is not None:
-            return  # we already received this htlc and don't have to store it again (e.g. after replay when restarting)
-            # return self.__handle_existing_invoice(target_invoice, existing, request)
-        else:
-            target_invoice.incoming_htlcs.add(htlc)
-            self.__db.write()
+        if target_invoice.funding_status is InvoiceState.FAILED:
+            # invoice is already failed, we don't accept any further htlcs for it
+            self.__logger.warning(f"handle_htlc: invoice {target_invoice.payment_hash} is already failed")
+            htlc.fail()
+            return True
 
         if incoming_htlc["cltv_expiry_relative"] < decoded_invoice["min_final_cltv_expiry"]:
             self.__logger.warning(f"handle_htlc: Too short cltv: ({incoming_htlc['cltv_expiry_relative']} < "
                                f"{decoded_invoice['min_final_cltv_expiry']})")
-            htlc.state = HtlcState.CANCELLED
-            self.__db.write()
-            # 400F = incorrect_or_unknown_payment_details
-            return request.set_result({"result": "fail", "failure_message": "400F"})
+            htlc.fail()
+            return True
 
         if "payment_secret" not in onion or onion["payment_secret"] != decoded_invoice["payment_secret"]:
-            self.__logger.warning(f"handle_htlc: htlc with incorrect payment secret for "
+            self.__logger.warning(f"handle_htlc: htlc with none or incorrect payment secret for "
                                   f"invoice {target_invoice.payment_hash}")
-            htlc.state = HtlcState.CANCELLED
-            self.__db.write()
-            return request.set_result({"result": "fail", "failure_message": "400F"})
+            htlc.fail()
+            return True
 
+        if target_invoice.funding_status != InvoiceState.UNFUNDED:
+            self.__logger.warning(f"handle_htlc: invoice {target_invoice.payment_hash} is already paid, "
+                                  f"no new htlcs accepted")
+            htlc.fail()
+            return True
 
+        # check if we now have enough htlcs to satisfy the invoice, redeem them if so
+        if target_invoice.is_fully_funded():
+            target_invoice.funding_status = InvoiceState.FUNDED
+            pass
+
+        return True
 
 
     # def __handle_existing_invoice(self, target_invoice: HoldInvoice, htlc: Htlc, request):

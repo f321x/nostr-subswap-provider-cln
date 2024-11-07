@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import enum
 # import json
 # from collections import defaultdict
-from typing import NamedTuple, List, Tuple, Mapping, Optional, TYPE_CHECKING, Union, Dict, Set, Sequence, Any, final
+from typing import Tuple, Optional, Any, Callable
 # import re
 # import sys
 
@@ -112,10 +112,10 @@ class OnlyPubkeyKeypair:
 class Keypair(OnlyPubkeyKeypair):
     privkey = attr.ib(type=bytes, converter=hex_to_bytes, repr=bytes_to_hex)
 
-class HtlcState(enum.StrEnum):
-    PAID = "paid"
-    ACCEPTED = "accepted"
-    CANCELLED = "cancelled"
+class HtlcState(enum.Enum):
+    SETTLED = 1
+    ACCEPTED = 2
+    CANCELLED = 3
 
 @attr.s
 class Htlc:
@@ -124,22 +124,42 @@ class Htlc:
     channel_id: int = field()
     amount_msat: int = field()
     created_at: datetime = field()
+    request_callback: Callable = field()
 
     @classmethod
-    def from_dict(cls: type['Htlc'], htlc_dict: dict[str, Any]) -> 'Htlc':
+    def from_dict(cls: type['Htlc'], htlc_dict: dict[str, Any], request_callback: Callable) -> 'Htlc':
         return Htlc(
-            state=HtlcState.Accepted,
+            state=HtlcState.ACCEPTED,
             short_channel_id=htlc_dict["short_channel_id"],
             channel_id=htlc_dict["id"],
             amount_msat=htlc_dict["amount_msat"],
-            created_at=datetime.now(tz=timezone.utc)
+            created_at=datetime.now(tz=timezone.utc),
+            request_callback=request_callback
         )
 
-class InvoiceState(enum.StrEnum):
-    SETTLED = "settled"
-    PAID = "funded"
-    UNPAID = "unpaid"
-    FAILED = "failed"
+    def fail(self) -> None:
+        """Fail HTLC with incorrect_or_unknown_payment_details"""
+        if not self.state == HtlcState.ACCEPTED:
+            raise InvalidHtlcState("fail(): Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        self.state = HtlcState.CANCELLED
+        self.request_callback.set_result({"result": "fail", "failure_message": "400F"})
+
+    def settle(self, preimage: bytes) -> None:
+        """Settle HTLC with correct payment details"""
+        if not self.state == HtlcState.ACCEPTED:
+            raise InvalidHtlcState("Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        self.state = HtlcState.SETTLED
+        self.request_callback.set_result({"result": "resolve",
+                                          "payment_key": preimage.hex()})
+
+class InvalidHtlcState(Exception):
+    pass
+
+class InvoiceState(enum.Enum):
+    SETTLED = 1
+    FUNDED = 2
+    UNFUNDED = 3
+    FAILED = 4
 
 class HoldInvoice:
     def __init__(self, payment_hash: bytes, bolt11: str, amount_msat: int):
@@ -147,7 +167,7 @@ class HoldInvoice:
         self.bolt11 = bolt11
         self.amount_msat = amount_msat
         self.incoming_htlcs = set()
-        # self.invoice_state = InvoiceState.Unpaid
+        self.funding_status = InvoiceState.UNFUNDED
         self.__associated_invoice: Optional['HoldInvoice'] = None
 
     def attach_prepay_invoice(self, invoice: 'HoldInvoice') -> None:
@@ -160,13 +180,28 @@ class HoldInvoice:
             raise InvoiceNotFoundError("HoldInvoice does not have a related PrepayInvoice")
         return self.__associated_invoice
 
-    def find_htlc(self, scid: str, channel_id: int) -> Htlc | None:
+    def find_htlc(self, scid: str, channel_id: int) -> Optional[Htlc]:
         for stored_htlc in self.incoming_htlcs:
             if stored_htlc.short_channel_id == scid and stored_htlc.channel_id == channel_id:
                 return stored_htlc
         return None
 
+    def is_fully_funded(self):
+        """Returns True if the stored incoming htlcs sum up to the invoice amount or more."""
+        return (sum(htlc.amount_msat for htlc in self.incoming_htlcs if htlc.state == HtlcState.ACCEPTED)
+                >= self.amount_msat)
+
+    def settle(self):
+        if not self.is_fully_funded():
+            raise InsufficientFundedInvoiceError(f"HoldInvoice {self.payment_hash} is not fully funded")
+        # for htlc in self.incoming_htlcs:
+        #     if htlc.state == HtlcState.ACCEPTED:
+        #         htlc.settle()
+
 class DuplicateInvoiceCreationError(Exception):
+    pass
+
+class InsufficientFundedInvoiceError(Exception):
     pass
 
 # @attr.s
