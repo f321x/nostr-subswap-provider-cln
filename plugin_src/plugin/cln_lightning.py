@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 import time
-from typing import NamedTuple, Optional, Callable, Dict, Tuple, Any
+from typing import NamedTuple, Optional, Callable, Dict, Tuple, Any, List
 from enum import IntEnum
 import threading
 from decimal import Decimal
@@ -60,21 +60,75 @@ class CLNLightning:
         self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[bytes, HoldInvoice]  # HASH -> bolt11
         self.__logger.debug("CLNLightning initialized")
         self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
-        self.htlc_expiry_task = None  # type: Optional[asyncio.Task]
+        self.monitoring_tasks = [] # type: List[asyncio.Task]
 
     async def run(self):
-        htlc_expiry_watcher = asyncio.to_thread(self.monitor_htlc_expiry)
-        self.htlc_expiry_task = await asyncio.create_task(htlc_expiry_watcher)
-        self.__logger.debug("CLNLightning htlc expiry monitoring started")
+        # put the htlc expiry monitoring in a separate thread to avoid blocking the async event loop
+        htlc_expiry_watcher = asyncio.to_thread(self.monitor_expiries)
+        self.monitoring_tasks.append(await asyncio.create_task(htlc_expiry_watcher))
 
-    def monitor_htlc_expiry(self):
+        # start the callback handler thread which checks if hold invoices are fully funded and calls the callback
+        callback_handler = asyncio.to_thread(self.callback_handler)
+        self.monitoring_tasks.append(await asyncio.create_task(callback_handler))
+
+        self.__logger.debug("CLNLightning monitoring started")
+
+    def monitor_expiries(self):
         """Iterate through the hold invoices and cancel expired htlcs"""
-        with self.__invoice_lock:
-            for invoice in self.__hold_invoices.values():
-                if invoice.cancel_expired_htlcs():
-                    self.__logger.warning(f"cancel_expired_htlcs: cancelled expired htlcs for invoice {invoice.payment_hash}")
-                    self.__db.write()
-        time.sleep(10)
+        while True:
+            try:
+                with self.__invoice_lock:
+                    for payment_hash in list(self.__hold_invoices.keys()):
+                        invoice = self.get_hold_invoice(payment_hash)
+                        # cancel all htlcs and delete invoice if it's expired
+                        # if invoice.created_at + invoice.expiry < time.time() and invoice.funding_status is InvoiceState.UNFUNDED:
+                        #     invoice.cancel_all_htlcs()  # also cancel the prepay invoice!
+                        #     self.__hold_invoice_callbacks.pop(invoice.payment_hash)
+                        #     self.__hold_invoices.pop(invoice.payment_hash)
+                        #     self.__db.write()
+                        # cancel expired htlcs
+                        if invoice.cancel_expired_htlcs():
+                            self.__logger.warning(f"cancel_expired_htlcs: cancelled expired htlcs for invoice {invoice.payment_hash}")
+                            self.__db.write()
+            except Exception as e:
+                self.__logger.error(f"monitor_expiries loop encountered an error: {e}")
+            time.sleep(10)
+
+    def callback_handler(self):
+        """Iterate through the hold invoices and call the callback if the invoice is fully funded"""
+        while True:
+            try:
+                for payment_hash, callback in list(self.__hold_invoice_callbacks.items()):
+                    with self.__invoice_lock:
+                        invoice = self.get_hold_invoice(payment_hash)
+                        if invoice is None:
+                            # no hold invoice has been saved before registering this callback
+                            self.__logger.error(f"callback_handler: hold invoice {payment_hash} not found")
+                            self.__hold_invoice_callbacks.pop(payment_hash)
+                            continue
+                        if invoice.funding_status is InvoiceState.FUNDED:
+                            prepay_invoice = invoice.get_prepay_invoice()
+                            if prepay_invoice is not None:
+                                if prepay_invoice.funding_status is InvoiceState.FUNDED:
+                                    # redeem the prepay invoice first
+                                    prepay_invoice.settle(self.get_preimage(prepay_invoice.payment_hash))
+                                    self.__db.write()
+                                else:
+                                    self.__logger.warning(f"callback_handler: prepay invoice "
+                                                          f"{prepay_invoice.payment_hash} not funded, but swap invoice is")
+                                    continue
+                            self.__logger.debug(f"callback_handler: invoice {invoice.payment_hash} fully funded, "
+                                                f"calling callback")
+                            # Call the callback outside the lock
+                            self.__invoice_lock.release()
+                            try:
+                                callback(invoice.payment_hash)
+                                self.unregister_hold_invoice(invoice.payment_hash)
+                            finally:
+                                self.__invoice_lock.acquire()
+            except Exception as e:
+                self.__logger.error(f"callback_handler encountered an error: {e}")
+            time.sleep(9)
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs) -> None:
         self.__logger.debug("htlc_accepted hook called")
@@ -124,6 +178,7 @@ class CLNLightning:
             htlc.fail()
             return True
 
+        # check if the payment secret is correct (and existing)
         if "payment_secret" not in onion or onion["payment_secret"] != decoded_invoice["payment_secret"]:
             self.__logger.warning(f"handle_htlc: htlc with none or incorrect payment secret for "
                                   f"invoice {target_invoice.payment_hash}")
@@ -331,7 +386,7 @@ class CLNLightning:
     # def add_payment_info_for_hold_invoice(self, payment_hash: bytes, amount_msat: int):
     #     pass
 
-    def bundle_payments(self, *, swap_invoice: HoldInvoice, prepay_invoice: PrepayInvoice):
+    def bundle_payments(self, *, swap_invoice: HoldInvoice, prepay_invoice: HoldInvoice):
         self.__hold_invoices[swap_invoice.payment_hash].attach_prepay_invoice(prepay_invoice)
         self.__db.write()
 
