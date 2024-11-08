@@ -1,7 +1,7 @@
 # Copyright (C) 2018 The Electrum developers
 # Distributed under the MIT software license, see the accompanying
 # file LICENCE or http://www.opensource.org/licenses/mit-license.php
-
+import time
 from enum import IntFlag
 from datetime import datetime, timezone
 import enum
@@ -16,7 +16,8 @@ import electrum_ecc as ecc
 import attr
 from attrs import field
 
-from .cln_lightning import InvoiceNotFoundError
+from .cln_lightning import InvoiceNotFoundError, InvalidPreimageFoundError
+from .crypto import sha256
 # from aiorpcx import NetAddress
 #
 # from .util import bfh, UserFacingException
@@ -176,6 +177,7 @@ class HoldInvoice:
         self.expiry = expiry
         self.incoming_htlcs = set()
         self.funding_status = InvoiceState.UNFUNDED
+        self.created_at = int(time.time())
         self.__associated_invoice: Optional['HoldInvoice'] = None
 
     def attach_prepay_invoice(self, invoice: 'HoldInvoice') -> None:
@@ -183,9 +185,7 @@ class HoldInvoice:
             raise DuplicateInvoiceCreationError("HoldInvoice already has a related PrepayInvoice")
         self.__associated_invoice = invoice
 
-    def get_prepay_invoice(self) -> 'HoldInvoice':
-        if self.__associated_invoice is None:
-            raise InvoiceNotFoundError("HoldInvoice does not have a related PrepayInvoice")
+    def get_prepay_invoice(self) -> Optional['HoldInvoice']:
         return self.__associated_invoice
 
     def find_htlc(self, scid: str, channel_id: int) -> Optional[Htlc]:
@@ -200,6 +200,12 @@ class HoldInvoice:
                                                                                        HtlcState.SETTLED])
                 >= self.amount_msat)
 
+    def cancel_all_htlcs(self) -> None:
+        for htlc in self.incoming_htlcs:
+            if htlc.state == HtlcState.ACCEPTED:
+                htlc.fail()
+        self.funding_status = InvoiceState.FAILED
+
     def cancel_expired_htlcs(self) -> bool:
         """Cancel all expired htlcs and return True if changes need to be saved"""
         changes = False
@@ -213,6 +219,7 @@ class HoldInvoice:
         return changes
 
     def settle(self, preimage: bytes) -> None:
+        assert preimage == sha256(self.payment_hash), f"Invalid preimage in settle(): {preimage.hex()}"
         if not self.is_fully_funded():
             raise InsufficientFundedInvoiceError(f"HoldInvoice {self.payment_hash} is not fully funded")
         for htlc in self.incoming_htlcs:
