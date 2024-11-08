@@ -144,6 +144,13 @@ class Htlc:
         self.state = HtlcState.CANCELLED
         self.request_callback.set_result({"result": "fail", "failure_message": "400F"})
 
+    def fail_timeout(self) -> None:
+        """Fail HTLC with incorrect_or_unknown_payment_details"""
+        if not self.state == HtlcState.ACCEPTED:
+            raise InvalidHtlcState("fail(): Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        self.state = HtlcState.CANCELLED
+        self.request_callback.set_result({"result": "fail", "failure_message": "0017"})  # mpp timeout
+
     def settle(self, preimage: bytes) -> None:
         """Settle HTLC with correct payment details"""
         if not self.state == HtlcState.ACCEPTED:
@@ -162,10 +169,11 @@ class InvoiceState(enum.Enum):
     FAILED = 4
 
 class HoldInvoice:
-    def __init__(self, payment_hash: bytes, bolt11: str, amount_msat: int):
+    def __init__(self, payment_hash: bytes, bolt11: str, amount_msat: int, expiry: int):
         self.payment_hash = payment_hash
         self.bolt11 = bolt11
         self.amount_msat = amount_msat
+        self.expiry = expiry
         self.incoming_htlcs = set()
         self.funding_status = InvoiceState.UNFUNDED
         self.__associated_invoice: Optional['HoldInvoice'] = None
@@ -188,15 +196,29 @@ class HoldInvoice:
 
     def is_fully_funded(self):
         """Returns True if the stored incoming htlcs sum up to the invoice amount or more."""
-        return (sum(htlc.amount_msat for htlc in self.incoming_htlcs if htlc.state == HtlcState.ACCEPTED)
+        return (sum(htlc.amount_msat for htlc in self.incoming_htlcs if htlc.state in [HtlcState.ACCEPTED,
+                                                                                       HtlcState.SETTLED])
                 >= self.amount_msat)
 
-    def settle(self):
+    def cancel_expired_htlcs(self) -> bool:
+        """Cancel all expired htlcs and return True if changes need to be saved"""
+        changes = False
+        for htlc in self.incoming_htlcs:
+            if htlc.state == HtlcState.ACCEPTED and (datetime.now(timezone.utc) - htlc.created_at).total_seconds() > self.expiry:
+                changes = True
+                htlc.fail_timeout()
+        if changes and self.funding_status == InvoiceState.FUNDED and not self.is_fully_funded():
+            # set invoice to unfunded again in case it was already set funded and we are now below the threshold
+            self.funding_status = InvoiceState.UNFUNDED
+        return changes
+
+    def settle(self, preimage: bytes) -> None:
         if not self.is_fully_funded():
             raise InsufficientFundedInvoiceError(f"HoldInvoice {self.payment_hash} is not fully funded")
-        # for htlc in self.incoming_htlcs:
-        #     if htlc.state == HtlcState.ACCEPTED:
-        #         htlc.settle()
+        for htlc in self.incoming_htlcs:
+            if htlc.state == HtlcState.ACCEPTED:
+                htlc.settle(preimage)
+        self.funding_status = InvoiceState.SETTLED
 
 class DuplicateInvoiceCreationError(Exception):
     pass

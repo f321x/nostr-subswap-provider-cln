@@ -62,6 +62,7 @@ class CLNSwapProvider:
                                           config=self.config,
                                           db=self.json_db,
                                           logger=self.logger)
+        await self.cln_lightning.run()
 
         # swap manager
         # self.swap_manager = SwapManager(wallet=self.cln_chain_wallet,
