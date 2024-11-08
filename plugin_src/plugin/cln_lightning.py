@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import time
@@ -59,6 +60,21 @@ class CLNLightning:
         self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[bytes, HoldInvoice]  # HASH -> bolt11
         self.__logger.debug("CLNLightning initialized")
         self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
+        self.htlc_expiry_task = None  # type: Optional[asyncio.Task]
+
+    async def run(self):
+        htlc_expiry_watcher = asyncio.to_thread(self.monitor_htlc_expiry)
+        self.htlc_expiry_task = await asyncio.create_task(htlc_expiry_watcher)
+        self.__logger.debug("CLNLightning htlc expiry monitoring started")
+
+    def monitor_htlc_expiry(self):
+        """Iterate through the hold invoices and cancel expired htlcs"""
+        with self.__invoice_lock:
+            for invoice in self.__hold_invoices.values():
+                if invoice.cancel_expired_htlcs():
+                    self.__logger.warning(f"cancel_expired_htlcs: cancelled expired htlcs for invoice {invoice.payment_hash}")
+                    self.__db.write()
+        time.sleep(10)
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs) -> None:
         self.__logger.debug("htlc_accepted hook called")
@@ -75,7 +91,7 @@ class CLNLightning:
                 if self.handle_htlc(invoice, htlc, onion, request):
                     self.__db.write()  # saves the changes to the invoice
             except Exception as e:
-                self.__logger.error(f"plugin_htlc_accepted_hook: {e}")
+                self.__logger.error(f"plugin_htlc_accepted_hook failed: {e}")
                 return request.set_result({"result": "continue"})
 
     def handle_htlc(self, target_invoice: HoldInvoice, incoming_htlc: dict[str, Any], onion, request) -> bool:
@@ -123,7 +139,6 @@ class CLNLightning:
         # check if we now have enough htlcs to satisfy the invoice, redeem them if so
         if target_invoice.is_fully_funded():
             target_invoice.funding_status = InvoiceState.FUNDED
-            pass
 
         return True
 
@@ -284,7 +299,7 @@ class CLNLightning:
         except Exception as e:
             self.__logger.error(f"b11invoice_from_hash: signinvoice rpc failed: {e}")
             raise Bolt11InvoiceCreationError("signinvoice rpc failed: " + str(e))
-        invoice = HoldInvoice(payment_hash, signed, amount_msat)
+        invoice = HoldInvoice(payment_hash, signed, amount_msat, expiry)
         return invoice
 
     def __get_route_hints(self, amount_msat: int):
