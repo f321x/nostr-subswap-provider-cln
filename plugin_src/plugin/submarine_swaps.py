@@ -207,7 +207,7 @@ class SwapManager:
             self.logger.info(f'nostr is connected')
             while True:
                 # todo: publish everytime fees have changed
-                await self.server_update_pairs()
+                self.server_update_pairs()
                 await transport.publish_offer(self)
                 await asyncio.sleep(600)
 
@@ -892,14 +892,14 @@ class SwapManager:
             self._swaps_by_funding_outpoint[swap._funding_prevout] = swap
         self._swaps_by_lockup_address[swap.lockup_address] = swap
 
-    async def server_update_pairs(self) -> None:
+    def server_update_pairs(self) -> None:
         """ for server """
         self.percentage = float(self.config.swapserver_fee_millionths) / 10000
         self._min_amount = 20000
         self._max_amount = 10000000
-        self.normal_fee = await self.get_fee(size_vb=CLAIM_FEE_SIZE)
-        self.lockup_fee = await self.get_fee(size_vb=LOCKUP_FEE_SIZE)
-        self.claim_fee = await self.get_fee(size_vb=CLAIM_FEE_SIZE)
+        self.normal_fee = self.get_fee(size_vb=CLAIM_FEE_SIZE)
+        self.lockup_fee = self.get_fee(size_vb=LOCKUP_FEE_SIZE)
+        self.claim_fee = self.get_fee(size_vb=CLAIM_FEE_SIZE)
 
 #     def update_pairs(self, pairs):
 #         self.logger.info(f'updating fees {pairs}')
