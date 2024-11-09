@@ -39,6 +39,14 @@ def read_json(filename, default):
         r = default
     return r
 
+CLAIM_FEE_SIZE = 136
+LOCKUP_FEE_SIZE = 153 # assuming 1 output, 2 outputs
+
+MIN_LOCKTIME_DELTA = 60
+LOCKTIME_DELTA_REFUND = 70
+MAX_LOCKTIME_DELTA = 100
+MIN_FINAL_CLTV_DELTA_FOR_CLIENT = 3 * 144  # note: put in invoice, but is not enforced by receiver in lnpeer.py
+
 
 GIT_REPO_URL = "https://github.com/spesmilo/electrum"
 GIT_REPO_ISSUES_URL = "https://github.com/spesmilo/electrum/issues"

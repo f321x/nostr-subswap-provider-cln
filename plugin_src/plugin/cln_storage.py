@@ -35,8 +35,15 @@ class CLNStorage:  # (Logger):
         self.logger.debug(f"Data fetched from cln datastore: {our_data}")
         self.pos = len(our_data)
         self.init_pos = self.pos
+        if our_data == "":  # as the later write calls can be append only we have to write once to create the key
+            self.__init_write_key()
         self.initialized = True
         return our_data
+
+    def __init_write_key(self):
+        """Create the write key in the cln datastore so we can append without key error later."""
+        self.logger.debug("|CLNStorage| __init_write_key: Initializing write key in cln datastore")
+        self.write("")
 
     def read(self):
         if not self.initialized:
@@ -57,7 +64,6 @@ class CLNStorage:  # (Logger):
         self.pos = self.init_pos
         self.raw = data  # update raw data to the new content
         self.logger.debug(f"Wrote to CLN db: {res}")
-        self.logger.info(f"Saved data to cln datastore")
 
     def append(self, data: str) -> None:
         """ append data to jsondb entry."""

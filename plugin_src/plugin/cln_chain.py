@@ -70,7 +70,7 @@ class CLNChainWallet:
             raise Exception(f"get_local_height: cln backend is not synced, response: {response}")
         blockheight = response['blockheight']
         if response['network'] == 'bitcoin':
-            assert blockheight > 860000, "get_local_height: cln backend returns invalid height"
+            assert blockheight > 869000, "get_local_height: cln backend returns invalid height"
         return blockheight
 
     def get_chain_fee(self, *, size_vbyte: int) -> int:

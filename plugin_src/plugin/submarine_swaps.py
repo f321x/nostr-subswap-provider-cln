@@ -14,9 +14,11 @@ from .transaction import PartialTxOutput, PartialTransaction, Transaction, TxOut
 from .utils import OldTaskGroup, now
 from .bitcoin import DummyAddress
 from .crypto import ripemd
-from .lnutil import hex_to_bytes, PrepayInvoice
+from .lnutil import hex_to_bytes
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants, lnutil
+from .constants import (MIN_LOCKTIME_DELTA, LOCKTIME_DELTA_REFUND, MAX_LOCKTIME_DELTA,
+                       MIN_FINAL_CLTV_DELTA_FOR_CLIENT, CLAIM_FEE_SIZE, LOCKUP_FEE_SIZE)
 from .cln_chain import CLNChainWallet
 from .cln_lightning import CLNLightning
 from .plugin_config import PluginConfig
@@ -25,17 +27,7 @@ from .chain_monitor import ChainMonitor
 
 # from .address_synchronizer import TX_HEIGHT_LOCAL
 
-CLAIM_FEE_SIZE = 136
-LOCKUP_FEE_SIZE = 153 # assuming 1 output, 2 outputs
 
-MIN_LOCKTIME_DELTA = 60
-LOCKTIME_DELTA_REFUND = 70
-MAX_LOCKTIME_DELTA = 100
-MIN_FINAL_CLTV_DELTA_FOR_CLIENT = 3 * 144  # note: put in invoice, but is not enforced by receiver in lnpeer.py
-assert MIN_LOCKTIME_DELTA <= LOCKTIME_DELTA_REFUND <= MAX_LOCKTIME_DELTA
-assert MAX_LOCKTIME_DELTA < lnutil.MIN_FINAL_CLTV_DELTA_ACCEPTED
-assert MAX_LOCKTIME_DELTA < lnutil.MIN_FINAL_CLTV_DELTA_FOR_INVOICE
-assert MAX_LOCKTIME_DELTA < MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 
 
 # The script of the reverse swaps has one extra check in it to verify
@@ -180,6 +172,7 @@ class SwapManager:
         for k, swap in self.swaps.items():
             if swap.prepay_hash is not None:
                 self.prepayments[swap.prepay_hash] = bytes.fromhex(k)
+        self.assert_constants()
         self.is_server = True  # this plugin is always a server (todo: for now)
         self.use_nostr = True  # this plugin only uses nostr comm
         self.is_initialized = asyncio.Event()  # set once nostr is connected to relays
@@ -227,6 +220,12 @@ class SwapManager:
     async def stop(self):
         self.logger.debug("SwapManager stop() called")
         await self.taskgroup.cancel_remaining()
+
+    def assert_constants(self):
+        assert MIN_LOCKTIME_DELTA <= LOCKTIME_DELTA_REFUND <= MAX_LOCKTIME_DELTA
+        assert MAX_LOCKTIME_DELTA < self.lnworker.MIN_FINAL_CLTV_DELTA_ACCEPTED
+        assert MAX_LOCKTIME_DELTA < self.lnworker.MIN_FINAL_CLTV_DELTA_FOR_INVOICE
+        assert MAX_LOCKTIME_DELTA < MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 
 #     def create_transport(self):
 #         from .lnutil import generate_random_keypair
@@ -502,14 +501,14 @@ class SwapManager:
 
         if prepay:
             prepay_hash = self.lnworker.create_payment_info(amount_msat=prepay_amount_sat*1000)
-            prepay_invoice = PrepayInvoice(self.lnworker.b11invoice_from_hash(
+            prepay_invoice = self.lnworker.b11invoice_from_hash(
                 payment_hash=prepay_hash,
                 amount_msat=prepay_amount_sat * 1000,
                 message='Submarine swap mining fees',
                 expiry=300,
                 fallback_address=None,
                 min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
-            ), prepay_hash)
+            )
 
             self.lnworker.bundle_payments(swap_invoice=invoice, prepay_invoice=prepay_invoice)
             self.prepayments[prepay_hash] = payment_hash

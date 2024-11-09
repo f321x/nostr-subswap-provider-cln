@@ -17,14 +17,19 @@ class CLNPlugin:
 
     def __await__(self):
         async def __run():
+            import sys
             self.__thread = asyncio.to_thread(self.plugin.run)
-            self.__task = await asyncio.create_task(self.__thread)
+            self.__task = asyncio.create_task(self.__thread)
             await asyncio.sleep(5)
             if self.__task.done():
                 raise Exception("Plugin failed to start.")
             return self
 
         return __run().__await__()
+
+    def fetch_cln_configuration(self) -> dict:
+        configuration = self.plugin.rpc.listconfigs()
+        return configuration
 
     def __htlc_hook_handler(self, onion, htlc, request, plugin, *args, ** kwargs) -> None:
         """Dynamic htlc hook handler, calls the hook in self.htlc_hook"""

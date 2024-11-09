@@ -405,7 +405,7 @@ class JsonDB:  # (Logger):
         if not self.pending_changes:
             self.logger.debug('no pending changes')
             return
-        self.logger.debug(f'appending {len(self.pending_changes)} pending changes')
+        self.logger.debug(f'|JsonDB| _append_pending_changes: appending {len(self.pending_changes)} pending changes')
         s = ''.join([',\n' + x for x in self.pending_changes])
         self.storage.append(s)
         self.pending_changes = []
