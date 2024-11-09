@@ -17,16 +17,18 @@ class CLNPlugin:
     def __await__(self):
         async def __run():
             self.__task = asyncio.create_task(asyncio.to_thread(self.plugin.run))
-            while True:
-                if self.plugin.rpc is not None:
-                    break
-                if self.__task.done():
-                    raise Exception("Plugin failed to start, thread returned")
-                await asyncio.sleep(0.5)
-            assert(self.plugin.rpc is not None), "Plugin failed to start, rpc not initialized"
+            await asyncio.wait_for(self.__await_rpc(), timeout=50)
             return self
-
         return __run().__await__()
+
+    async def __await_rpc(self):
+        """Wait for the rpc to be ready, this will take quite different amounts of time depending on the environment"""
+        while True:
+            if self.plugin.rpc is not None:
+                return
+            if self.__task.done():
+                raise Exception("Plugin failed to start, thread returned")
+            await asyncio.sleep(0.5)
 
     def fetch_cln_configuration(self) -> dict:
         configuration = self.plugin.rpc.listconfigs()
