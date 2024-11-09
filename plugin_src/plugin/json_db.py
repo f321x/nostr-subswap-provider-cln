@@ -28,7 +28,7 @@ import json
 import jsonpatch
 
 from .cln_logger import PluginLogger
-from .utils import WalletFileException, profiler
+from .utils import WalletFileException
 from .cln_storage import CLNStorage
 
 
@@ -410,8 +410,8 @@ class JsonDB:  # (Logger):
         self.storage.append(s)
         self.pending_changes = []
 
+    # @profiler
     @locked
-    @profiler
     def write_and_force_consolidation(self):
         if threading.current_thread().daemon:
             raise Exception('daemon thread cannot write db')

@@ -63,7 +63,14 @@ class CLNStorage:  # (Logger):
         self.init_pos = len(data)  # update initial position
         self.pos = self.init_pos
         self.raw = data  # update raw data to the new content
-        self.logger.debug(f"Wrote to CLN db: {res}")
+        self.logger.debug(f"Wrote to CLN db: \nkey:{res['key']} "
+                          f"\ngeneration: {res['generation']} "
+                          f"\ncontent:{res['string']}")
+
+    def wipe(self):
+        """ Wipe the jsondb entry in the cln datastore. Used for manual testing and debugging."""
+        self.write("")
+        self.logger.debug("Wiped CLN db")
 
     def append(self, data: str) -> None:
         """ append data to jsondb entry."""
@@ -76,7 +83,9 @@ class CLNStorage:  # (Logger):
         if "error" in res:
             raise StorageReadWriteError(f"CLN DB returned error on append: {res}")
         self.pos += len(data)
-        self.logger.debug(f"Appended data to CLN DB: {res}")
+        self.logger.debug(f"Appended to CLN db: \nkey:{res['key']} "
+                      f"\ngeneration: {res['generation']} "
+                      f"\ncontent:{res['string']}")
 
     def _test_db(self):
         """Test if we can read and write to the cln datastore."""
