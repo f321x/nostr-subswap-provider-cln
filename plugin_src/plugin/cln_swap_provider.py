@@ -35,7 +35,7 @@ class CLNSwapProvider:
     async def initialize(self):
         # cln plugin handler
         self.plugin_handler = await CLNPlugin()
-
+        print(type(self.plugin_handler.plugin.rpc), file=sys.stderr)
         # logging to cln logs
         self.logger = PluginLogger("swap-provider", self.plugin_handler.plugin.log)
 

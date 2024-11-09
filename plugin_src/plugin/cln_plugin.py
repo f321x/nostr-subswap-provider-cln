@@ -12,17 +12,18 @@ class CLNPlugin:
         self.__hook_ready = Event()
         self.plugin.add_hook("htlc_accepted", self.__htlc_hook_handler, background=True)
         # Create but don't start the thread yet
-        self.__thread = None
         self.__task = None
 
     def __await__(self):
         async def __run():
-            import sys
-            self.__thread = asyncio.to_thread(self.plugin.run)
-            self.__task = asyncio.create_task(self.__thread)
-            await asyncio.sleep(5)
-            if self.__task.done():
-                raise Exception("Plugin failed to start.")
+            self.__task = asyncio.create_task(asyncio.to_thread(self.plugin.run))
+            while True:
+                if self.plugin.rpc is not None:
+                    break
+                if self.__task.done():
+                    raise Exception("Plugin failed to start, thread returned")
+                await asyncio.sleep(0.5)
+            assert(self.plugin.rpc is not None), "Plugin failed to start, rpc not initialized"
             return self
 
         return __run().__await__()
