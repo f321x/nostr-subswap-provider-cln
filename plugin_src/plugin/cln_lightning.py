@@ -44,6 +44,8 @@ RECEIVED = Direction.RECEIVED
 #     return wrapper
 
 class CLNLightning:
+    INBOUND_LIQUIDITY_FACTOR = 0.9  # Buffer factor for inbound liquidity calculation (use only 90% of inbound capacity)
+
     def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
         self.__rpc = plugin_instance.plugin.rpc
         plugin_instance.set_htlc_hook(self.plugin_htlc_accepted_hook)
@@ -296,22 +298,22 @@ class CLNLightning:
             raise ClnRpcError("get_bolt11_invoice call to CLN failed: " + str(e))
         return bolt11, label_hex
 
-    def register_hold_invoice(self, payment_hash: bytes, callback: Callable):
+    def register_hold_invoice(self, payment_hash: bytes, callback: Callable) -> None:
         self.__hold_invoice_callbacks[payment_hash] = callback
 
-    def unregister_hold_invoice(self, payment_hash: bytes):
+    def unregister_hold_invoice(self, payment_hash: bytes) -> None:
         self.__hold_invoice_callbacks.pop(payment_hash)
 
-    def save_hold_invoice(self, invoice: HoldInvoice):
+    def save_hold_invoice(self, invoice: HoldInvoice) -> None:
         self.__hold_invoices[invoice.payment_hash] = invoice
         self.__db.write()
 
-    def __delete_hold_invoice(self, payment_hash: bytes):
+    def __delete_hold_invoice(self, payment_hash: bytes) -> None:
         self.__hold_invoices.pop(payment_hash)
         self.__db.write()
 
-    def save_forwarding_failure(self, payment_key_hex: str, failure_msg: str):
-        pass
+    # def save_forwarding_failure(self, payment_key_hex: str, failure_msg: str):
+    #     pass
 
     def b11invoice_from_hash(self, *,
             payment_hash: bytes,
@@ -357,8 +359,8 @@ class CLNLightning:
         invoice = HoldInvoice(payment_hash, signed, amount_msat, expiry)
         return invoice
 
-    def __get_route_hints(self, amount_msat: int):
-        if amount_msat is None or amount_msat is 0:
+    def __get_route_hints(self, amount_msat: int) -> List[Tuple[str, List[Tuple[bytes, ShortID, int, int, int]]]]:
+        if amount_msat is None or amount_msat == 0:
             raise NotImplementedError  # swaps always have the amount defined
         try:
             available_channels = self.__rpc.listpeerchannels()["channels"]
@@ -386,7 +388,7 @@ class CLNLightning:
     # def add_payment_info_for_hold_invoice(self, payment_hash: bytes, amount_msat: int):
     #     pass
 
-    def bundle_payments(self, *, swap_invoice: HoldInvoice, prepay_invoice: HoldInvoice):
+    def bundle_payments(self, *, swap_invoice: HoldInvoice, prepay_invoice: HoldInvoice) -> None:
         self.__hold_invoices[swap_invoice.payment_hash].attach_prepay_invoice(prepay_invoice)
         self.__db.write()
 
@@ -402,8 +404,16 @@ class CLNLightning:
 
     def num_sats_can_receive(self) -> int:
         """returns max inbound capacity"""
-        pass
-
+        inbound_capacity_sat = 0
+        try:
+            available_channels = self.__rpc.listfunds()["channels"]
+        except Exception as e:
+            self.__logger.error(f"num_sats_can_receive: listfunds rpc failed: {e}")
+            return 0
+        for channel in available_channels:
+            if channel["connected"]:
+                inbound_capacity_sat += (channel["amount_msat"] - channel["our_amount_msat"]) / 1000
+        return int(inbound_capacity_sat * self.INBOUND_LIQUIDITY_FACTOR)
 
 
 
