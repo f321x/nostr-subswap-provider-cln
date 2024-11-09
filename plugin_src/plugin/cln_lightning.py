@@ -13,7 +13,7 @@ from .crypto import sha256
 from .invoices import PR_UNPAID, PR_PAID, Invoice, BaseInvoice, LN_EXPIRY_NEVER
 from .json_db import JsonDB
 from .plugin_config import PluginConfig
-from .submarine_swaps import MIN_FINAL_CLTV_DELTA_FOR_CLIENT
+from .constants import MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 from .utils import call_blocking_with_timeout, ShortID
 from .lnutil import (LnFeatures, filter_suitable_recv_chans, HoldInvoice, DuplicateInvoiceCreationError, Htlc,
                      HtlcState, InvoiceState)
@@ -47,6 +47,9 @@ class CLNLightning:
     INBOUND_LIQUIDITY_FACTOR = 0.9  # Buffer factor for inbound liquidity calculation (use only 90% of inbound capacity)
 
     def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
+        self.MIN_FINAL_CLTV_DELTA_ACCEPTED: int = config.cln_config["configs"]["cltv-final"]["value_int"]
+        self.MIN_FINAL_CLTV_DELTA_FOR_INVOICE: int = self.MIN_FINAL_CLTV_DELTA_ACCEPTED + 3
+
         self.__rpc = plugin_instance.plugin.rpc
         plugin_instance.set_htlc_hook(self.plugin_htlc_accepted_hook)
         self.__config = config
@@ -60,18 +63,18 @@ class CLNLightning:
         self.__invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
         # todo: make HoldInvoice StoredObject
         self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[bytes, HoldInvoice]  # HASH -> bolt11
-        self.__logger.debug("CLNLightning initialized")
         self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
         self.monitoring_tasks = [] # type: List[asyncio.Task]
+        self.__logger.debug("CLNLightning initialized")
 
     async def run(self):
         # put the htlc expiry monitoring in a separate thread to avoid blocking the async event loop
         htlc_expiry_watcher = asyncio.to_thread(self.monitor_expiries)
-        self.monitoring_tasks.append(await asyncio.create_task(htlc_expiry_watcher))
+        self.monitoring_tasks.append(asyncio.create_task(htlc_expiry_watcher))
 
         # start the callback handler thread which checks if hold invoices are fully funded and calls the callback
         callback_handler = asyncio.to_thread(self.callback_handler)
-        self.monitoring_tasks.append(await asyncio.create_task(callback_handler))
+        self.monitoring_tasks.append(asyncio.create_task(callback_handler))
 
         self.__logger.debug("CLNLightning monitoring started")
 

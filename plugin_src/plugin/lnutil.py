@@ -16,7 +16,6 @@ import electrum_ecc as ecc
 import attr
 from attrs import field
 
-from .cln_lightning import InvoiceNotFoundError, InvalidPreimageFoundError
 from .crypto import sha256
 # from aiorpcx import NetAddress
 #
@@ -83,7 +82,7 @@ def filter_suitable_recv_chans(inv_amount_msat: int, channels):
     suitable_channels = []
     # filter out channels that aren't private or available
     for channel in channels:
-        if channel["private"] and channel["state"] is "CHANNELD_NORMAL":
+        if channel["private"] and channel["state"] == "CHANNELD_NORMAL":
             suitable_channels.append(channel)
 
     # sort by inbound capacity

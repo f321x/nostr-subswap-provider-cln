@@ -1,21 +1,20 @@
-from collections.abc import Callable
-
 import attr
 import os
 import electrum_ecc as ecc
 from electrum_aionostr import Relay
 from dotenv import load_dotenv
+
+from .cln_plugin import CLNPlugin
 from .lnutil import hex_to_bytes, bytes_to_hex
 from .json_db import StoredObject
-from .cln_plugin import CLNPlugin
 from .cln_logger import PluginLogger
 
 class PluginConfig:
 
     """Simple configuration class for swap server"""
-    def __init__(self, *, nostr_secret: bytes, logger: PluginLogger):
+    def __init__(self, *, nostr_secret: bytes, cln_configuration: dict, logger: PluginLogger):
         self.nostr_keypair = Keypair.from_private_key(nostr_secret) # plugin.derive_secret("NOSTRSECRET"))
-
+        self.cln_config: dict = cln_configuration
         self.nostr_relays: [Relay] = []
         self.swapserver_fee_millionths: int = 10_000
         self.confirmation_speed_target_blocks: int = 10
@@ -23,11 +22,12 @@ class PluginConfig:
         self.logger = logger  # PluginLogger("swap-provider", plugin, level="DEBUG")
 
     @classmethod
-    def from_env(cls, *, nostr_secret: bytes, logger: PluginLogger) -> 'PluginConfig':
+    def from_cln_and_env(cls, *, cln_plugin_handler: CLNPlugin, logger: PluginLogger) -> 'PluginConfig':
         """Load configuration from .env file or environment variables"""
         load_dotenv()
-        config = PluginConfig(nostr_secret=nostr_secret,
-                              logger=logger)
+        config = PluginConfig(nostr_secret=cln_plugin_handler.derive_secret("NOSTRSECRET"),
+                            cln_configuration=cln_plugin_handler.fetch_cln_configuration(),
+                            logger=logger)
 
         if relays := os.getenv("NOSTR_RELAYS"):
             config.nostr_relays.extend(Relay(url=url.strip()) for url in relays.split(","))

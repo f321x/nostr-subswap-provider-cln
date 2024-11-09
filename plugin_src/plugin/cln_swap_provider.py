@@ -40,9 +40,8 @@ class CLNSwapProvider:
         self.logger = PluginLogger("swap-provider", self.plugin_handler.plugin.log)
 
         # user config (from .env file or env)
-        self.config = PluginConfig.from_env(nostr_secret=self.plugin_handler.derive_secret("NOSTRSECRET"),
+        self.config = PluginConfig.from_cln_and_env(cln_plugin_handler=self.plugin_handler,
                                             logger=self.logger)
-
         # data storage using cln database trough rpc api
         storage = CLNStorage(db_string_writer=self.plugin_handler.plugin.rpc.datastore,
                              db_string_reader=self.plugin_handler.plugin.rpc.listdatastore,
@@ -62,7 +61,24 @@ class CLNSwapProvider:
                                           config=self.config,
                                           db=self.json_db,
                                           logger=self.logger)
+
         await self.cln_lightning.run()
+        print("CLNLightning triggered", file=sys.stderr)
+
+        prepay_hash = self.cln_lightning.create_payment_info(amount_msat=1000)
+        prepay = self.cln_lightning.get_hold_invoice(prepay_hash)
+        swap_hash = self.cln_lightning.create_payment_info(amount_msat=100000)
+        swap = self.cln_lightning.get_hold_invoice(swap_hash)
+        self.cln_lightning.bundle_payments(swap_invoice=swap, prepay_invoice=prepay)
+
+        def callback_test(payment_hash):
+            self.logger.info(f"callback_test successfull {payment_hash}")
+            asyncio.sleep(5)
+            swap.settle(self.cln_lightning.get_preimage(swap_hash))
+
+        self.cln_lightning.register_hold_invoice(swap_hash, callback_test)
+        self.logger.info(f"prepay invoice: \n{prepay.bolt11}")
+        print(f"swap invoice: \n{swap.bolt11}", file=sys.stderr)
 
         # swap manager
         # self.swap_manager = SwapManager(wallet=self.cln_chain_wallet,
