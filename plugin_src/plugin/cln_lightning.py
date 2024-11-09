@@ -321,12 +321,12 @@ class CLNLightning:
     def b11invoice_from_hash(self, *,
             payment_hash: bytes,
             amount_msat: int,
-            message: str,
+            message: Optional[str],
             expiry: int,  # expiration of invoice (in seconds, relative)
             fallback_address: Optional[str],
             min_final_cltv_expiry_delta: Optional[int] = None) -> HoldInvoice:
         assert amount_msat > 0, f"b11invoice_from_hash: amount_msat must be > 0, but got {amount_msat}"
-        if len(payment_hash) != 64:
+        if len(payment_hash) != 32:
             raise InvalidInvoiceCreationError("b11invoice_from_hash: payment_hash "
                                               "must be 32 bytes, was " + str(len(payment_hash)))
         if len(self.__rpc.listinvoices(payment_hash=payment_hash.hex())["invoices"]) > 0:

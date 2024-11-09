@@ -25,7 +25,6 @@ class PluginConfig:
     def from_cln_and_env(cls, *, cln_plugin_handler: CLNPlugin, logger: PluginLogger) -> 'PluginConfig':
         """Load configuration from .env file or environment variables"""
         load_dotenv()
-
         config = PluginConfig(nostr_secret=cln_plugin_handler.derive_secret("NOSTRSECRET"),
                             cln_configuration=cln_plugin_handler.fetch_cln_configuration(),
                             logger=logger)

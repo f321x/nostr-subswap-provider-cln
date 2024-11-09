@@ -35,7 +35,7 @@ class CLNSwapProvider:
     async def initialize(self):
         # cln plugin handler
         self.plugin_handler = await CLNPlugin()
-        print(type(self.plugin_handler.plugin.rpc), file=sys.stderr)
+
         # logging to cln logs
         self.logger = PluginLogger("swap-provider", self.plugin_handler.plugin.log)
 
@@ -46,6 +46,7 @@ class CLNSwapProvider:
         storage = CLNStorage(db_string_writer=self.plugin_handler.plugin.rpc.datastore,
                              db_string_reader=self.plugin_handler.plugin.rpc.listdatastore,
                              logger=self.logger)
+        storage.wipe()
         self.json_db = JsonDB(s=storage.read(), storage=storage, logger=self.logger)
 
 
@@ -61,14 +62,14 @@ class CLNSwapProvider:
                                           config=self.config,
                                           db=self.json_db,
                                           logger=self.logger)
-
         await self.cln_lightning.run()
-        print("CLNLightning triggered", file=sys.stderr)
 
         prepay_hash = self.cln_lightning.create_payment_info(amount_msat=1000)
-        prepay = self.cln_lightning.get_hold_invoice(prepay_hash)
+        prepay = self.cln_lightning.b11invoice_from_hash(payment_hash=prepay_hash, amount_msat=1000, message=None,
+                                                         expiry=3600, fallback_address=None, min_final_cltv_expiry_delta=None)
         swap_hash = self.cln_lightning.create_payment_info(amount_msat=100000)
-        swap = self.cln_lightning.get_hold_invoice(swap_hash)
+        swap = self.cln_lightning.b11invoice_from_hash(payment_hash=swap_hash, amount_msat=100000, message=None,
+                                                         expiry=3600, fallback_address=None, min_final_cltv_expiry_delta=None)
         self.cln_lightning.bundle_payments(swap_invoice=swap, prepay_invoice=prepay)
 
         def callback_test(payment_hash):
