@@ -7,6 +7,7 @@ cp plugin_src/* in the CLN plugin dir, or set plugin=/path/to/swap-provider.py i
 
 import asyncio
 import sys
+import traceback
 from plugin.cln_swap_provider import CLNSwapProvider
 
 
@@ -16,8 +17,9 @@ async def main():
         swap_provider = CLNSwapProvider()
         await swap_provider.run()
     except Exception as e:
-        print(e, file=sys.stderr)  # will show e in the CLN logs
-
+        # will show e in the CLN logs
+        print(f"ERROR: swap provider plugin crashed: {e}\n{traceback.format_exc()}",
+              file=sys.stderr)
 
 if __name__ == "__main__":
     asyncio.run(main())
