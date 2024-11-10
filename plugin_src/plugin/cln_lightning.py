@@ -341,9 +341,9 @@ class CLNLightning:
             paymenthash=payment_hash,
             amount=Decimal(amount_msat) / Decimal(COIN*1000),
             tags=[
-                     ('d', message if message and len(message) > 0 else f"swap {datetime.now()}"),
                      ('c', MIN_FINAL_CLTV_DELTA_FOR_CLIENT if min_final_cltv_expiry_delta is None
                                                                 else min_final_cltv_expiry_delta),
+                     ('d', message if message and len(message) > 0 else f"swap {datetime.now()}"),
                      ('x', LN_EXPIRY_NEVER if expiry == 0 else expiry),
                      ('9', invoice_features),
                      ('f', fallback_address),
@@ -352,12 +352,14 @@ class CLNLightning:
             payment_secret=self.__get_payment_secret(payment_hash))
         b11invoice_unsigned: str = lnencode_unsigned(lnaddr)
         try:
+             self.__logger.debug(f"b11invoice_from_hash: unsigned invoice: {b11invoice_unsigned}")
              signed = self.__rpc.call(
                  "signinvoice",
                  {
                      "invstring": b11invoice_unsigned,
                  },
              )["bolt11"]
+             self.__logger.debug(f"b11invoice_from_hash: signed invoice: {signed}")
         except Exception as e:
             self.__logger.error(f"b11invoice_from_hash: signinvoice rpc failed: {e}")
             raise Bolt11InvoiceCreationError("signinvoice rpc failed: " + str(e))
