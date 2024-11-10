@@ -146,6 +146,7 @@ class Htlc:
             "channel_id": self.channel_id,
             "amount_msat": self.amount_msat,
             "created_at": self.created_at.isoformat(),
+            # the request_callback is not serializable, we re-add it once CLN replayed the htlc after restart
         }
 
     @classmethod
@@ -228,23 +229,24 @@ class HoldInvoice:
 
     def is_fully_funded(self):
         """Returns True if the stored incoming htlcs sum up to the invoice amount or more."""
-        return (sum(htlc.amount_msat for htlc in self.incoming_htlcs if htlc.state in [HtlcState.ACCEPTED,
-                                                                                       HtlcState.SETTLED])
+        return (sum(stored_htlc.amount_msat for stored_htlc in self.incoming_htlcs if stored_htlc.state in
+                                                                        [HtlcState.ACCEPTED, HtlcState.SETTLED])
                 >= self.amount_msat)
 
     def cancel_all_htlcs(self) -> None:
-        for htlc in self.incoming_htlcs:
-            if htlc.state == HtlcState.ACCEPTED:
-                htlc.fail()
+        for stored_htlc in self.incoming_htlcs:
+            if stored_htlc.state == HtlcState.ACCEPTED:
+                stored_htlc.fail()
         self.funding_status = InvoiceState.FAILED
 
     def cancel_expired_htlcs(self) -> bool:
         """Cancel all expired htlcs and return True if changes need to be saved"""
         changes = False
-        for htlc in self.incoming_htlcs:
-            if htlc.state == HtlcState.ACCEPTED and (datetime.now(timezone.utc) - htlc.created_at).total_seconds() > self.expiry:
+        for stored_htlc in self.incoming_htlcs:
+            if stored_htlc.state == HtlcState.ACCEPTED and (datetime.now(timezone.utc) -
+                                                            stored_htlc.created_at).total_seconds() > self.expiry:
                 changes = True
-                htlc.fail_timeout()
+                stored_htlc.fail_timeout()
         if changes and self.funding_status == InvoiceState.FUNDED and not self.is_fully_funded():
             # set invoice to unfunded again in case it was already set funded and we are now below the threshold
             self.funding_status = InvoiceState.UNFUNDED
@@ -254,10 +256,35 @@ class HoldInvoice:
         assert preimage == sha256(self.payment_hash), f"Invalid preimage in settle(): {preimage.hex()}"
         if not self.is_fully_funded():
             raise InsufficientFundedInvoiceError(f"HoldInvoice {self.payment_hash} is not fully funded")
-        for htlc in self.incoming_htlcs:
-            if htlc.state == HtlcState.ACCEPTED:
-                htlc.settle(preimage)
+        for stored_htlc in self.incoming_htlcs:
+            if stored_htlc.state == HtlcState.ACCEPTED:
+                stored_htlc.settle(preimage)
         self.funding_status = InvoiceState.SETTLED
+
+    def to_json(self):
+        return {
+            "payment_hash": self.payment_hash.hex(),
+            "bolt11": self.bolt11,
+            "amount_msat": self.amount_msat,
+            "expiry": self.expiry,
+            "incoming_htlcs": [stored_htlc.to_json() for stored_htlc in self.incoming_htlcs],
+            "funding_status": self.funding_status.value,
+            "created_at": self.created_at,
+            "_associated_invoice": self._associated_invoice.to_json() if self._associated_invoice else None
+        }
+
+    @classmethod
+    def from_json(cls, data: dict):
+        return cls(
+            payment_hash=bytes.fromhex(data["payment_hash"]),
+            bolt11=data["bolt11"],
+            amount_msat=data["amount_msat"],
+            expiry=data["expiry"],
+            incoming_htlcs={Htlc.from_json(restored_htlc) for restored_htlc in data["incoming_htlcs"]},
+            funding_status=InvoiceState(data["funding_status"]),
+            created_at=data["created_at"],
+            _associated_invoice=cls.from_json(data["_associated_invoice"]) if data["_associated_invoice"] else None
+        )
 
 class DuplicateInvoiceCreationError(Exception):
     pass
