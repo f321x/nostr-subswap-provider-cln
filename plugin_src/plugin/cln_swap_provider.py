@@ -68,16 +68,17 @@ class CLNSwapProvider:
         prepay = self.cln_lightning.b11invoice_from_hash(payment_hash=prepay_hash, amount_msat=1000, message=None,
                                                          expiry=3600, fallback_address=None, min_final_cltv_expiry_delta=None)
         swap_hash = self.cln_lightning.create_payment_info(amount_msat=100000)
-        swap = self.cln_lightning.b11invoice_from_hash(payment_hash=swap_hash, amount_msat=100000, message=None,
-                                                         expiry=3600, fallback_address=None, min_final_cltv_expiry_delta=None)
-        self.cln_lightning.bundle_payments(swap_invoice=swap, prepay_invoice=prepay)
-
         def callback_test(payment_hash):
             self.logger.info(f"callback_test successfull {payment_hash}")
             asyncio.sleep(5)
             swap.settle(self.cln_lightning.get_preimage(swap_hash))
-
+        swap = self.cln_lightning.b11invoice_from_hash(payment_hash=swap_hash, amount_msat=100000, message=None,
+                                                         expiry=3600, fallback_address=None, min_final_cltv_expiry_delta=None)
+        self.cln_lightning.save_hold_invoice(swap)
         self.cln_lightning.register_hold_invoice(swap_hash, callback_test)
+        self.cln_lightning.bundle_payments(swap_invoice=swap, prepay_invoice=prepay)
+
+
         self.logger.info(f"prepay invoice: \n{prepay.bolt11}")
         print(f"swap invoice: \n{swap.bolt11}", file=sys.stderr)
 

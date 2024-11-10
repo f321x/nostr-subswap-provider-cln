@@ -17,6 +17,7 @@ import attr
 from attrs import field
 
 from .crypto import sha256
+from .json_db import stored_in
 # from aiorpcx import NetAddress
 #
 # from .util import bfh, UserFacingException
@@ -168,6 +169,7 @@ class InvoiceState(enum.Enum):
     UNFUNDED = 3
     FAILED = 4
 
+@stored_in("hold_invoices")
 class HoldInvoice:
     def __init__(self, payment_hash: bytes, bolt11: str, amount_msat: int, expiry: int):
         self.payment_hash = payment_hash

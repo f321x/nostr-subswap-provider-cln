@@ -63,7 +63,7 @@ class CLNLightning:
         self.__preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
         self.__invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
         # todo: make HoldInvoice StoredObject
-        self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[bytes, HoldInvoice]  # HASH -> bolt11
+        self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[str, HoldInvoice]  # HASH[hex] -> bolt11
         self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
         self.monitoring_tasks = [] # type: List[asyncio.Task]
         self.__logger.debug("CLNLightning initialized")
@@ -309,11 +309,11 @@ class CLNLightning:
         self.__hold_invoice_callbacks.pop(payment_hash)
 
     def save_hold_invoice(self, invoice: HoldInvoice) -> None:
-        self.__hold_invoices[invoice.payment_hash] = invoice
+        self.__hold_invoices[invoice.payment_hash.hex()] = invoice
         self.__db.write()
 
     def __delete_hold_invoice(self, payment_hash: bytes) -> None:
-        self.__hold_invoices.pop(payment_hash)
+        self.__hold_invoices.pop(payment_hash.hex())
         self.__db.write()
 
     # def save_forwarding_failure(self, payment_key_hex: str, failure_msg: str):
