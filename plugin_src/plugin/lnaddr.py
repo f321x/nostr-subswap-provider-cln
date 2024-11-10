@@ -2,6 +2,7 @@
 # This was forked from https://github.com/rustyrussell/lightning-payencode/tree/acc16ec13a3fa1dc16c07af6ec67c261bd8aff23
 
 import io
+import os
 import re
 import sys
 import time
@@ -242,15 +243,9 @@ def lnencode_unsigned(addr: 'LnAddr') -> str:
         raise ValueError("Must include either 'd' or 'h'")
 
     # We sign externally with the Core Lightning RPC
-    # We actually sign the hrp, then data (padded to 8 bits with zeroes).
-    # msg = hrp.encode("ascii") + bytes(convertbits(data5, 5, 8))
-    # msg32 = sha256(msg).digest()
-    # privkey = ecc.ECPrivkey(privkey)
-    # sig = privkey.ecdsa_sign_recoverable(msg32, is_compressed=False)
-    # recovery_flag = bytes([sig[0] - 27])
-    # sig = bytes(sig[1:]) + recovery_flag
-    # sig = bytes(convertbits(sig, 8, 5, False))
-    # data5 += sig
+    # we add a dummy signature which is neccessary for CLN parsing but will be replaced by CLN again
+    dummy_signature = bytes([15] * 104)
+    data5 += dummy_signature
 
     return bech32_encode(segwit_addr.Encoding.BECH32, hrp, data5)
 
