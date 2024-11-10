@@ -1,13 +1,18 @@
+import sys
+
 import attr
 import os
 import electrum_ecc as ecc
 from electrum_aionostr import Relay
 from dotenv import load_dotenv
+from typing import Optional
 
 from .cln_plugin import CLNPlugin
 from .lnutil import hex_to_bytes, bytes_to_hex
 from .json_db import StoredObject
 from .cln_logger import PluginLogger
+from .constants import AbstractNet, BitcoinMainnet, BitcoinTestnet, BitcoinSignet, BitcoinRegtest
+
 
 class PluginConfig:
 
@@ -15,6 +20,7 @@ class PluginConfig:
     def __init__(self, *, nostr_secret: bytes, cln_configuration: dict, logger: PluginLogger):
         self.nostr_keypair = Keypair.from_private_key(nostr_secret) # plugin.derive_secret("NOSTRSECRET"))
         self.cln_config: dict = cln_configuration
+        self.network = self.__parse_network_type(cln_configuration["network"]["value_str"])  # type: Optional[AbstractNet]
         self.nostr_relays: [Relay] = []
         self.swapserver_fee_millionths: int = 10_000
         self.confirmation_speed_target_blocks: int = 10
@@ -28,7 +34,6 @@ class PluginConfig:
         config = PluginConfig(nostr_secret=cln_plugin_handler.derive_secret("NOSTRSECRET"),
                             cln_configuration=cln_plugin_handler.fetch_cln_configuration(),
                             logger=logger)
-
         if relays := os.getenv("NOSTR_RELAYS"):
             config.nostr_relays.extend(Relay(url=url.strip()) for url in relays.split(","))
         else:
@@ -62,6 +67,19 @@ class PluginConfig:
 
         config.logger.debug(f"Loaded configuration: {config}")
         return config
+
+    @staticmethod
+    def __parse_network_type(network_type: str) -> AbstractNet:
+        if network_type == "mainnet":
+            return BitcoinMainnet()
+        elif network_type == "testnet":
+            return BitcoinTestnet()
+        elif network_type == "signet":
+            return BitcoinSignet()
+        elif network_type == "regtest":
+            return BitcoinRegtest()
+        else:
+            raise Exception(f"Invalid network type: {network_type}")
 
     @property
     def cln_feerate_str(self) -> str:

@@ -32,7 +32,7 @@ class CLNPlugin:
 
     def fetch_cln_configuration(self) -> dict:
         configuration = self.plugin.rpc.listconfigs()
-        return configuration
+        return configuration["configs"]
 
     def __htlc_hook_handler(self, onion, htlc, request, plugin, *args, ** kwargs) -> None:
         """Dynamic htlc hook handler, calls the hook in self.htlc_hook"""

@@ -3,6 +3,7 @@
 
 import io
 import re
+import sys
 import time
 from hashlib import sha256
 from binascii import hexlify
