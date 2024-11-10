@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import time
+from datetime import datetime
 from typing import NamedTuple, Optional, Callable, Dict, Tuple, Any, List
 from enum import IntEnum
 import threading
@@ -47,7 +48,7 @@ class CLNLightning:
     INBOUND_LIQUIDITY_FACTOR = 0.9  # Buffer factor for inbound liquidity calculation (use only 90% of inbound capacity)
 
     def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
-        self.MIN_FINAL_CLTV_DELTA_ACCEPTED: int = config.cln_config["configs"]["cltv-final"]["value_int"]
+        self.MIN_FINAL_CLTV_DELTA_ACCEPTED: int = config.cln_config["cltv-final"]["value_int"]
         self.MIN_FINAL_CLTV_DELTA_FOR_INVOICE: int = self.MIN_FINAL_CLTV_DELTA_ACCEPTED + 3
 
         self.__rpc = plugin_instance.plugin.rpc
@@ -321,7 +322,7 @@ class CLNLightning:
     def b11invoice_from_hash(self, *,
             payment_hash: bytes,
             amount_msat: int,
-            message: Optional[str],
+            message: Optional[str] = "",
             expiry: int,  # expiration of invoice (in seconds, relative)
             fallback_address: Optional[str],
             min_final_cltv_expiry_delta: Optional[int] = None) -> HoldInvoice:
@@ -336,10 +337,11 @@ class CLNLightning:
         invoice_features = LnFeatures.VAR_ONION_REQ | LnFeatures.PAYMENT_SECRET_REQ | LnFeatures.BASIC_MPP_OPT
         routing_hints = self.__get_route_hints(amount_msat)
         lnaddr = LnAddr(
+            net=self.__config.network,
             paymenthash=payment_hash,
-            amount=amount_msat/Decimal(COIN*1000),
+            amount=Decimal(amount_msat) / Decimal(COIN*1000),
             tags=[
-                     ('d', message),
+                     ('d', message if message and len(message) > 0 else f"swap {datetime.now()}"),
                      ('c', MIN_FINAL_CLTV_DELTA_FOR_CLIENT if min_final_cltv_expiry_delta is None
                                                                 else min_final_cltv_expiry_delta),
                      ('x', LN_EXPIRY_NEVER if expiry == 0 else expiry),
