@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import enum
 # import json
 # from collections import defaultdict
-from typing import Tuple, Optional, Any, Callable
+from typing import Tuple, Optional, Any, Callable, Set
 # import re
 # import sys
 
@@ -125,7 +125,7 @@ class Htlc:
     channel_id: int = field()
     amount_msat: int = field()
     created_at: datetime = field()
-    request_callback: Callable = field()
+    request_callback: Optional[Callable] = field()
 
     @classmethod
     def from_dict(cls: type['Htlc'], htlc_dict: dict[str, Any], request_callback: Callable) -> 'Htlc':
@@ -138,10 +138,39 @@ class Htlc:
             request_callback=request_callback
         )
 
+    def to_json(self):
+        return {
+            "_type": "Htlc",
+            "state": self.state.value,
+            "short_channel_id": self.short_channel_id,
+            "channel_id": self.channel_id,
+            "amount_msat": self.amount_msat,
+            "created_at": self.created_at.isoformat(),
+        }
+
+    @classmethod
+    def from_json(cls, data: dict) -> 'Htlc':
+        # Verify this is indeed Htlc data
+        if data.get("_type") != "Htlc":
+            raise ValueError("Invalid data type for Htlc")
+
+        return cls(
+            state=HtlcState(data["state"]),
+            short_channel_id=data["short_channel_id"],
+            channel_id=data["channel_id"],
+            amount_msat=data["amount_msat"],
+            created_at=datetime.fromisoformat(data["created_at"]),
+            request_callback=None
+        )
+
+    def add_new_htlc_callback(self, request_callback: Callable) -> None:
+        self.request_callback = request_callback
+
     def fail(self) -> None:
         """Fail HTLC with incorrect_or_unknown_payment_details"""
         if not self.state == HtlcState.ACCEPTED:
             raise InvalidHtlcState("fail(): Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        assert(self.request_callback is not None), "Htlc has no callback set on fail"
         self.state = HtlcState.CANCELLED
         self.request_callback.set_result({"result": "fail", "failure_message": "400F"})
 
@@ -149,6 +178,7 @@ class Htlc:
         """Fail HTLC with incorrect_or_unknown_payment_details"""
         if not self.state == HtlcState.ACCEPTED:
             raise InvalidHtlcState("fail(): Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        assert(self.request_callback is not None), "Htlc has no callback set on timeout"
         self.state = HtlcState.CANCELLED
         self.request_callback.set_result({"result": "fail", "failure_message": "0017"})  # mpp timeout
 
@@ -156,6 +186,7 @@ class Htlc:
         """Settle HTLC with correct payment details"""
         if not self.state == HtlcState.ACCEPTED:
             raise InvalidHtlcState("Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        assert(self.request_callback is not None), "Htlc has no callback set on settle"
         self.state = HtlcState.SETTLED
         self.request_callback.set_result({"result": "resolve",
                                           "payment_key": preimage.hex()})
@@ -170,24 +201,24 @@ class InvoiceState(enum.Enum):
     FAILED = 4
 
 @stored_in("hold_invoices")
+@attr.s(auto_attribs=True)
 class HoldInvoice:
-    def __init__(self, payment_hash: bytes, bolt11: str, amount_msat: int, expiry: int):
-        self.payment_hash = payment_hash
-        self.bolt11 = bolt11
-        self.amount_msat = amount_msat
-        self.expiry = expiry
-        self.incoming_htlcs = set()
-        self.funding_status = InvoiceState.UNFUNDED
-        self.created_at = int(time.time())
-        self.__associated_invoice: Optional['HoldInvoice'] = None
+    payment_hash: bytes
+    bolt11: str
+    amount_msat: int
+    expiry: int
+    incoming_htlcs: Set[Htlc] = attr.Factory(set)
+    funding_status: InvoiceState = attr.Factory(lambda: InvoiceState.UNFUNDED)
+    created_at: int = attr.Factory(lambda: int(time.time()))
+    _associated_invoice: Optional['HoldInvoice'] = attr.Factory(lambda: None)
 
     def attach_prepay_invoice(self, invoice: 'HoldInvoice') -> None:
-        if self.__associated_invoice is not None:
+        if self._associated_invoice is not None:
             raise DuplicateInvoiceCreationError("HoldInvoice already has a related PrepayInvoice")
-        self.__associated_invoice = invoice
+        self._associated_invoice = invoice
 
     def get_prepay_invoice(self) -> Optional['HoldInvoice']:
-        return self.__associated_invoice
+        return self._associated_invoice
 
     def find_htlc(self, scid: str, channel_id: int) -> Optional[Htlc]:
         for stored_htlc in self.incoming_htlcs:

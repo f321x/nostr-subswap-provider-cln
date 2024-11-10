@@ -85,7 +85,7 @@ class CLNLightning:
             try:
                 with self.__invoice_lock:
                     for payment_hash in list(self.__hold_invoices.keys()):
-                        invoice = self.get_hold_invoice(payment_hash)
+                        invoice = self.get_hold_invoice(bytes.fromhex(payment_hash))
                         # cancel all htlcs and delete invoice if it's expired
                         # if invoice.created_at + invoice.expiry < time.time() and invoice.funding_status is InvoiceState.UNFUNDED:
                         #     invoice.cancel_all_htlcs()  # also cancel the prepay invoice!
@@ -155,9 +155,11 @@ class CLNLightning:
                 return request.set_result({"result": "continue"})
 
     def handle_htlc(self, target_invoice: HoldInvoice, incoming_htlc: dict[str, Any], onion, request) -> bool:
-        """Validates and stores the incoming htlc, returns True if changes need to be saved in db"""
+        """Validates and stores the incoming htlc, returns True if changes need to be saved in db
+        CLN will replay all unresolved HTLCs on restart"""
         htlc = Htlc.from_dict(incoming_htlc, request)
         if (existing := target_invoice.find_htlc(htlc.short_channel_id, htlc.channel_id)) is not None:
+            existing.add_new_htlc_callback(request)
             return False # we already received this htlc and don't have to store it again (e.g. after replay when restarting)
             # return self.__handle_existing_invoice(target_invoice, existing, request)
         else:
@@ -264,7 +266,7 @@ class CLNLightning:
     #     return self.__invoices.get(key)
 
     def get_hold_invoice(self, payment_hash: bytes) -> Optional[HoldInvoice]:
-        return self.__hold_invoices.get(payment_hash)
+        return self.__hold_invoices.get(payment_hash.hex())
 
     # def delete_invoice(self, key: str) -> None:
     #     inv = self.__invoices.pop(key)
