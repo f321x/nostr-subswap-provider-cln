@@ -80,8 +80,8 @@ class CLNSwapProvider:
         self.cln_lightning.register_hold_invoice_callback(swap_hash, callback_test)
         self.cln_lightning.bundle_payments(swap_invoice=swap, prepay_invoice=prepay)
 
-        # self.logger.info(f"prepay invoice: \n{prepay.bolt11}")
-        # print(f"swap invoice: \n{swap.bolt11}", file=sys.stderr)
+        self.logger.info(f"prepay invoice: \n{prepay.bolt11}")
+        print(f"swap invoice: \n{swap.bolt11}", file=sys.stderr)
 
         # swap manager
         # self.swap_manager = SwapManager(wallet=self.cln_chain_wallet,
