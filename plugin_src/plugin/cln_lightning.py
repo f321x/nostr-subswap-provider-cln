@@ -113,11 +113,12 @@ class CLNLightning:
                             self.__hold_invoice_callbacks.pop(payment_hash)
                             continue
                         if invoice.funding_status is InvoiceState.FUNDED:
-                            prepay_invoice = invoice.get_prepay_invoice()
-                            if prepay_invoice is not None:
+                            prepay_invoice_hash = invoice.get_prepay_invoice()
+                            if prepay_invoice_hash is not None:
+                                prepay_invoice = self.get_hold_invoice(prepay_invoice_hash)
                                 if prepay_invoice.funding_status is InvoiceState.FUNDED:
                                     # redeem the prepay invoice first
-                                    prepay_invoice.settle(self.get_preimage(prepay_invoice.payment_hash))
+                                    prepay_invoice.settle(self.get_preimage(prepay_invoice_hash))
                                     self.__db.write()
                                 else:
                                     self.__logger.warning(f"callback_handler: prepay invoice "
@@ -161,7 +162,6 @@ class CLNLightning:
         if (existing := target_invoice.find_htlc(htlc.short_channel_id, htlc.channel_id)) is not None:
             existing.add_new_htlc_callback(request)
             return False # we already received this htlc and don't have to store it again (e.g. after replay when restarting)
-            # return self.__handle_existing_invoice(target_invoice, existing, request)
         else:
             # add the htlc to the invoice
             target_invoice.incoming_htlcs.add(htlc)
@@ -304,7 +304,7 @@ class CLNLightning:
             raise ClnRpcError("get_bolt11_invoice call to CLN failed: " + str(e))
         return bolt11, label_hex
 
-    def register_hold_invoice(self, payment_hash: bytes, callback: Callable) -> None:
+    def register_hold_invoice_callback(self, payment_hash: bytes, callback: Callable) -> None:
         self.__hold_invoice_callbacks[payment_hash] = callback
 
     def unregister_hold_invoice(self, payment_hash: bytes) -> None:
@@ -327,7 +327,8 @@ class CLNLightning:
             message: Optional[str] = "",
             expiry: int,  # expiration of invoice (in seconds, relative)
             fallback_address: Optional[str],
-            min_final_cltv_expiry_delta: Optional[int] = None) -> HoldInvoice:
+            min_final_cltv_expiry_delta: Optional[int] = None,
+            store_invoice: bool = True) -> HoldInvoice:
         assert amount_msat > 0, f"b11invoice_from_hash: amount_msat must be > 0, but got {amount_msat}"
         if len(payment_hash) != 32:
             raise InvalidInvoiceCreationError("b11invoice_from_hash: payment_hash "
@@ -366,6 +367,8 @@ class CLNLightning:
             self.__logger.error(f"b11invoice_from_hash: signinvoice rpc failed: {e}")
             raise Bolt11InvoiceCreationError("signinvoice rpc failed: " + str(e))
         invoice = HoldInvoice(payment_hash, signed, amount_msat, expiry)
+        if store_invoice:
+            self.save_hold_invoice(invoice)
         return invoice
 
     def __get_route_hints(self, amount_msat: int) -> List[Tuple[str, List[Tuple[bytes, ShortID, int, int, int]]]]:
@@ -398,8 +401,12 @@ class CLNLightning:
     #     pass
 
     def bundle_payments(self, *, swap_invoice: HoldInvoice, prepay_invoice: HoldInvoice) -> None:
-        self.__hold_invoices[swap_invoice.payment_hash].attach_prepay_invoice(prepay_invoice)
-        self.__db.write()
+        current_invoice = self.get_hold_invoice(swap_invoice.payment_hash)
+        # remove the old invoice so changes are tracked by the JsonDB StoredDict
+        self.__hold_invoices.pop(swap_invoice.payment_hash.hex())
+        current_invoice.attach_prepay_invoice(prepay_invoice.payment_hash)
+        # then store the updated invoice with the prepay invoice attached
+        self.save_hold_invoice(current_invoice)
 
     def get_preimage(self, payment_hash: bytes) -> Optional[bytes]:
         assert isinstance(payment_hash, bytes), f"expected bytes, but got {type(payment_hash)}"

@@ -211,15 +211,17 @@ class HoldInvoice:
     incoming_htlcs: Set[Htlc] = attr.Factory(set)
     funding_status: InvoiceState = attr.Factory(lambda: InvoiceState.UNFUNDED)
     created_at: int = attr.Factory(lambda: int(time.time()))
-    _associated_invoice: Optional['HoldInvoice'] = attr.Factory(lambda: None)
+    associated_invoice: bytes = attr.Factory(lambda: None)  # payment_hash of the related prepay invoice
 
-    def attach_prepay_invoice(self, invoice: 'HoldInvoice') -> None:
-        if self._associated_invoice is not None:
+    def attach_prepay_invoice(self, invoice_payment_hash: bytes) -> None:
+        """Attach a prepay invoice payment hash to this HoldInvoice"""
+        if self.associated_invoice is not None:
             raise DuplicateInvoiceCreationError("HoldInvoice already has a related PrepayInvoice")
-        self._associated_invoice = invoice
+        self.associated_invoice = invoice_payment_hash
 
-    def get_prepay_invoice(self) -> Optional['HoldInvoice']:
-        return self._associated_invoice
+    def get_prepay_invoice(self) -> Optional[bytes]:
+        """Returns the payment_hash of the associated prepay invoice"""
+        return self.associated_invoice
 
     def find_htlc(self, scid: str, channel_id: int) -> Optional[Htlc]:
         for stored_htlc in self.incoming_htlcs:
@@ -270,7 +272,7 @@ class HoldInvoice:
             "incoming_htlcs": [stored_htlc.to_json() for stored_htlc in self.incoming_htlcs],
             "funding_status": self.funding_status.value,
             "created_at": self.created_at,
-            "_associated_invoice": self._associated_invoice.to_json() if self._associated_invoice else None
+            "associated_invoice": self.associated_invoice.hex() if self.associated_invoice else None
         }
 
     @classmethod
@@ -283,7 +285,7 @@ class HoldInvoice:
             incoming_htlcs={Htlc.from_json(restored_htlc) for restored_htlc in data["incoming_htlcs"]},
             funding_status=InvoiceState(data["funding_status"]),
             created_at=data["created_at"],
-            _associated_invoice=cls.from_json(data["_associated_invoice"]) if data["_associated_invoice"] else None
+            associated_invoice=bytes.fromhex(data["associated_invoice"]) if data["associated_invoice"] else None
         )
 
 class DuplicateInvoiceCreationError(Exception):
