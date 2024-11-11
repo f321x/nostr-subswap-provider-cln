@@ -118,7 +118,7 @@ class HtlcState(enum.Enum):
     ACCEPTED = 2
     CANCELLED = 3
 
-@attr.s
+@attr.s(eq=False)
 class Htlc:
     state: HtlcState = field()
     short_channel_id: str = field()
@@ -126,6 +126,16 @@ class Htlc:
     amount_msat: int = field()
     created_at: datetime = field()
     request_callback: Optional[Callable] = field()
+
+    def __hash__(self):
+        return hash(self.short_channel_id + str(self.channel_id) + str(self.created_at.isoformat()))
+
+    def __eq__(self, other):
+        if not isinstance(other, Htlc):
+            return False
+        return (self.short_channel_id == other.short_channel_id and
+                self.channel_id == other.channel_id and
+                self.created_at == other.created_at)
 
     @classmethod
     def from_dict(cls: type['Htlc'], htlc_dict: dict[str, Any], request_callback: Callable) -> 'Htlc':
@@ -223,9 +233,9 @@ class HoldInvoice:
         """Returns the payment_hash of the associated prepay invoice"""
         return self.associated_invoice
 
-    def find_htlc(self, scid: str, channel_id: int) -> Optional[Htlc]:
+    def find_htlc(self, new_htlc: Htlc) -> Optional[Htlc]:
         for stored_htlc in self.incoming_htlcs:
-            if stored_htlc.short_channel_id == scid and stored_htlc.channel_id == channel_id:
+            if stored_htlc == new_htlc:
                 return stored_htlc
         return None
 
@@ -255,7 +265,7 @@ class HoldInvoice:
         return changes
 
     def settle(self, preimage: bytes) -> None:
-        assert preimage == sha256(self.payment_hash), f"Invalid preimage in settle(): {preimage.hex()}"
+        assert self.payment_hash == sha256(preimage), f"Invalid preimage in settle(): {preimage.hex()}"
         if not self.is_fully_funded():
             raise InsufficientFundedInvoiceError(f"HoldInvoice {self.payment_hash} is not fully funded")
         for stored_htlc in self.incoming_htlcs:
