@@ -124,7 +124,7 @@ class CLNLightning:
                                     self.__logger.warning(f"callback_handler: prepay invoice "
                                                           f"{prepay_invoice.payment_hash} not funded, but swap invoice is")
                                     continue
-                            self.__logger.debug(f"callback_handler: invoice {invoice.payment_hash} fully funded, "
+                            self.__logger.debug(f"callback_handler: invoice {invoice.payment_hash.hex()} fully funded, "
                                                 f"calling callback")
                             # Call the callback outside the lock
                             self.__invoice_lock.release()
@@ -144,7 +144,7 @@ class CLNLightning:
 
         with self.__invoice_lock:
             invoice = self.get_hold_invoice(bytes.fromhex(htlc["payment_hash"]))
-            if invoice is None or invoice.funding_status:  # not a hold invoice we know about
+            if invoice is None:  # not a hold invoice we know about
                 return request.set_result({"result": "continue"})
 
             # htlc that affects one of our stored hold invoices
@@ -158,9 +158,11 @@ class CLNLightning:
     def handle_htlc(self, target_invoice: HoldInvoice, incoming_htlc: dict[str, Any], onion, request) -> bool:
         """Validates and stores the incoming htlc, returns True if changes need to be saved in db
         CLN will replay all unresolved HTLCs on restart"""
+        self.__logger.debug(f"handle_htlc: {incoming_htlc}")
         htlc = Htlc.from_dict(incoming_htlc, request)
-        if (existing := target_invoice.find_htlc(htlc.short_channel_id, htlc.channel_id)) is not None:
+        if (existing := target_invoice.find_htlc(htlc)) is not None:
             existing.add_new_htlc_callback(request)
+            self.__logger.debug(f"handle_htlc: registering new callback for existing htlc invoice: {target_invoice.payment_hash}")
             return False # we already received this htlc and don't have to store it again (e.g. after replay when restarting)
         else:
             # add the htlc to the invoice
@@ -203,6 +205,7 @@ class CLNLightning:
         if target_invoice.is_fully_funded():
             target_invoice.funding_status = InvoiceState.FUNDED
 
+        self.__logger.debug(f"handle_htlc: htlc accepted for invoice {target_invoice.payment_hash}, value: {htlc.amount_msat}")
         return True
 
 

@@ -71,8 +71,9 @@ class CLNSwapProvider:
         swap_hash = self.cln_lightning.create_payment_info(amount_msat=100000)
 
         def callback_test(payment_hash):
-            self.logger.info(f"callback_test successfull {payment_hash}")
-            asyncio.sleep(5)
+            self.logger.info(f"callback_test successfull {payment_hash.hex()}")
+            import time
+            time.sleep(5)
             swap.settle(self.cln_lightning.get_preimage(swap_hash))
 
         swap = self.cln_lightning.b11invoice_from_hash(payment_hash=swap_hash, amount_msat=100000, message=None,
