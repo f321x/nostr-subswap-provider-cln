@@ -371,8 +371,6 @@ class JsonDB:  # (Logger):
             elif _type == tuple:
                 v = dict((k, constructor(*x)) for k, x in v.items())
             else:
-                for k, x in v.items():
-                    print(f"k= {k}, x= {x}")
                 v = dict((k, constructor(x)) for k, x in v.items())
         if key in registered_dict_keys:
             convert_key = registered_dict_keys[key]
