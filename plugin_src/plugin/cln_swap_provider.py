@@ -46,7 +46,7 @@ class CLNSwapProvider:
         storage = CLNStorage(db_string_writer=self.plugin_handler.plugin.rpc.datastore,
                              db_string_reader=self.plugin_handler.plugin.rpc.listdatastore,
                              logger=self.logger)
-        # storage.wipe()
+        storage.wipe()
         self.json_db = JsonDB(s=storage.read(), storage=storage, logger=self.logger)
 
 
@@ -70,15 +70,17 @@ class CLNSwapProvider:
 
         swap_hash = self.cln_lightning.create_payment_info(amount_msat=100000)
 
-        def callback_test(payment_hash):
-            self.logger.info(f"callback_test successfull {payment_hash.hex()}")
-            import time
-            time.sleep(5)
-            swap.settle(self.cln_lightning.get_preimage(swap_hash))
 
         swap = self.cln_lightning.b11invoice_from_hash(payment_hash=swap_hash, amount_msat=100000, message=None,
                                                          expiry=3600, fallback_address=None, min_final_cltv_expiry_delta=None)
-        self.cln_lightning.register_hold_invoice_callback(swap_hash, callback_test)
+
+        def callback_test(payment_hash):
+            swap.settle(self.cln_lightning.get_preimage(swap_hash))
+            self.logger.info(f"callback_test successfull {payment_hash.hex()}")
+
+        for swap_hash in self.cln_lightning._hold_invoices:
+            self.cln_lightning.register_hold_invoice_callback(swap_hash, callback_test)
+
         self.cln_lightning.bundle_payments(swap_invoice=swap, prepay_invoice=prepay)
 
         self.logger.info(f"prepay invoice: \n{prepay.bolt11}")

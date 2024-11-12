@@ -119,8 +119,7 @@ class Htlc:
         if not isinstance(other, Htlc):
             return False
         return (self.short_channel_id == other.short_channel_id and
-                self.channel_id == other.channel_id and
-                self.created_at == other.created_at)
+                self.channel_id == other.channel_id)
 
     @classmethod
     def from_dict(cls: type['Htlc'], htlc_dict: dict[str, Any], request_callback: Callable) -> 'Htlc':
@@ -279,10 +278,13 @@ class HoldInvoice:
             self.funding_status = InvoiceState.UNFUNDED
         return changes
 
-    def settle(self, preimage: bytes) -> None:
+    def settle(self, preimage: Union[bytes, str]) -> None:
+        """Settle the invoice with the given preimage"""
+        if isinstance(preimage, str):
+            preimage = hex_to_bytes(preimage)
         assert self.payment_hash == sha256(preimage), f"Invalid preimage in settle(): {preimage.hex()}"
         if not self.is_fully_funded():
-            raise InsufficientFundedInvoiceError(f"HoldInvoice {self.payment_hash} is not fully funded")
+            raise InsufficientFundedInvoiceError(f"HoldInvoice {self.payment_hash.hex()} is not fully funded")
         for stored_htlc in self.incoming_htlcs:
             if stored_htlc.state == HtlcState.ACCEPTED:
                 stored_htlc.settle(preimage)
