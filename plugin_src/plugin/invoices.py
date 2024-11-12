@@ -9,6 +9,7 @@ from .crypto import sha256
 import attr
 
 from .json_db import StoredObject, stored_in
+from .lnutil import hex_to_bytes
 # from .i18n import _
 from .utils import age, InvoiceError, format_satoshis
 # from .bip21 import create_bip21_uri
@@ -195,46 +196,47 @@ class InvoiceState(enum.Enum):
     UNFUNDED = 3
     FAILED = 4
 
-@stored_in("hold_invoices", _type="HoldInvoice")
 # @attr.s(auto_attribs=True)
-def __init__(
-    self,
-    payment_hash: Union[bytes, str, Dict] = None,
-    bolt11: str = None,
-    amount_msat: int = None,
-    expiry: int = None,
-    **kwargs
-):
-    if isinstance(payment_hash, dict):
-        # Dictionary input
-        data = payment_hash
-        self.payment_hash = bytes.fromhex(data['payment_hash']) if isinstance(data['payment_hash'], str) else data[
-            'payment_hash']
-        self.bolt11 = data['bolt11']
-        self.amount_msat = data['amount_msat']
-        self.expiry = data['expiry']
-        self.incoming_htlcs = set(data.get('incoming_htlcs', set()))
-        self.funding_status = data.get('funding_status', InvoiceState.UNFUNDED)
-        self.created_at = data.get('created_at', int(time.time()))
-        self.associated_invoice = (
-            bytes.fromhex(data['associated_invoice'])
-            if data.get('associated_invoice') and isinstance(data['associated_invoice'], str)
-            else data.get('associated_invoice')
-        )
-    else:
-        # Individual arguments
-        self.payment_hash = bytes.fromhex(payment_hash) if isinstance(payment_hash, str) else payment_hash
-        self.bolt11 = bolt11
-        self.amount_msat = amount_msat
-        self.expiry = expiry
-        self.incoming_htlcs = kwargs.get('incoming_htlcs', set())
-        self.funding_status = kwargs.get('funding_status', InvoiceState.UNFUNDED)
-        self.created_at = kwargs.get('created_at', int(time.time()))
-        self.associated_invoice = (
-            bytes.fromhex(kwargs['associated_invoice'])
-            if kwargs.get('associated_invoice') and isinstance(kwargs['associated_invoice'], str)
-            else kwargs.get('associated_invoice')
-        )
+@stored_in("hold_invoices", _type="HoldInvoice")
+class HoldInvoice:
+    payment_hash: bytes
+    bolt11: str
+    amount_msat: int
+    expiry: int
+    incoming_htlcs: Set[Htlc]
+    funding_status: InvoiceState
+    created_at: int
+    associated_invoice: Optional[bytes]
+
+    def __init__(
+        self,
+        payment_hash: Union[bytes, str, Dict] = None,
+        bolt11: str = None,
+        amount_msat: int = None,
+        expiry: int = None
+    ):
+        """This large init method is neccessary to allow for the JsonDB to instanciate the class with a dict."""
+        if isinstance(payment_hash, dict):  # this is the case when we initiate JsonDB
+            # Dictionary input
+            data = payment_hash
+            self.payment_hash = hex_to_bytes(data['payment_hash'])
+            self.bolt11 = data['bolt11']
+            self.amount_msat = data['amount_msat']
+            self.expiry = data['expiry']
+            self.incoming_htlcs = set(Htlc.from_json(htlc_json) for htlc_json in data.get('incoming_htlcs', set()))
+            self.funding_status = InvoiceState(data['funding_status'])
+            self.created_at = data['created_at']
+            self.associated_invoice = hex_to_bytes(data['associated_invoice'])
+        else:
+            # Individual arguments
+            self.payment_hash = hex_to_bytes(payment_hash)
+            self.bolt11 = bolt11
+            self.amount_msat = amount_msat
+            self.expiry = expiry
+            self.incoming_htlcs = set()
+            self.funding_status = InvoiceState.UNFUNDED
+            self.created_at = int(time.time())
+            self.associated_invoice = None
 
     def attach_prepay_invoice(self, invoice_payment_hash: bytes) -> None:
         """Attach a prepay invoice payment hash to this HoldInvoice"""
@@ -297,25 +299,6 @@ def __init__(
             "created_at": self.created_at,
             "associated_invoice": self.associated_invoice.hex() if self.associated_invoice else None
         }
-
-    # @classmethod
-    # def from_json(cls, data: dict):
-    #     # deserializing the htlcs first
-    #     htlcs = set()
-    #     for restored_htlc in data["incoming_htlcs"]:
-    #         htlc = Htlc.from_json(restored_htlc)
-    #         htlcs.add(htlc)
-    #
-    #     return cls(
-    #         payment_hash=bytes.fromhex(data["payment_hash"]),
-    #         bolt11=data["bolt11"],
-    #         amount_msat=data["amount_msat"],
-    #         expiry=data["expiry"],
-    #         incoming_htlcs=htlcs,
-    #         funding_status=InvoiceState(data["funding_status"]),
-    #         created_at=data["created_at"],
-    #         associated_invoice=bytes.fromhex(data["associated_invoice"]) if data["associated_invoice"] else None
-    #     )
 
 class DuplicateInvoiceCreationError(Exception):
     pass
