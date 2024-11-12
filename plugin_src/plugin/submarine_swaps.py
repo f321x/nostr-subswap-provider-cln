@@ -166,7 +166,7 @@ class SwapManager:
             swap._payment_hash = payment_hash
             self._add_or_reindex_swap(swap)
             if not swap.is_reverse and not swap.is_redeemed:
-                self.lnworker.register_hold_invoice(payment_hash=payment_hash, callback=self.hold_invoice_callback)
+                self.lnworker.register_hold_invoice_callback(payment_hash=payment_hash, callback=self.hold_invoice_callback)
 
         self.prepayments = {}  # type: Dict[bytes, bytes] # fee_rhash -> rhash
         for k, swap in self.swaps.items():
@@ -244,14 +244,14 @@ class SwapManager:
         except Exception as e:
             self.logger.info(f'exception paying {key}, will not retry')
             self.invoices_to_pay.pop(key, None)
-            await self.lnworker.delete_invoice(key)
+            self.lnworker.delete_invoice(key)
             return
         if not success:
-            self.logger.info(f'failed to pay {key}, will retry in 10 minutes')
+            self.logger.info(f'failed to pay pending invoice {key}: {log}, will retry in 10 minutes')
             self.invoices_to_pay[key] = now() + 600
         else:
             self.logger.info(f'paid invoice {key}')
-            await self.lnworker.delete_invoice(key)
+            self.lnworker.delete_invoice(key)
             self.invoices_to_pay.pop(key, None)
 
     async def pay_pending_ln_invoices(self):
@@ -466,7 +466,7 @@ class SwapManager:
             prepay=True,
         )
         # callback will be triggered when the swap invoice is paid to broadcast the funding tx
-        self.lnworker.register_hold_invoice(payment_hash=payment_hash, callback=self.hold_invoice_callback)
+        self.lnworker.register_hold_invoice_callback(payment_hash=payment_hash, callback=self.hold_invoice_callback)
         return swap, invoice, prepay_invoice
 
 

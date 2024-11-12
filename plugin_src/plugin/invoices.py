@@ -1,6 +1,11 @@
 import time
-from typing import List, Optional, Union, Dict, Any, Sequence
+from datetime import datetime, timezone
+from typing import List, Optional, Union, Dict, Any, Sequence, Set, Callable
 
+import enum
+from attrs import field
+from typing import Set, Callable
+from .crypto import sha256
 import attr
 
 from .json_db import StoredObject, stored_in
@@ -90,6 +95,204 @@ def _decode_outputs(outputs) -> Optional[List[PartialTxOutput]]:
 # Hence set some high expiration here
 LN_EXPIRY_NEVER = 100 * 365 * 24 * 60 * 60  # 100 years
 
+
+
+class HtlcState(enum.Enum):
+    SETTLED = 1
+    ACCEPTED = 2
+    CANCELLED = 3
+
+@attr.s(eq=False)
+class Htlc:
+    state: HtlcState = field()
+    short_channel_id: str = field()
+    channel_id: int = field()
+    amount_msat: int = field()
+    created_at: datetime = field()
+    request_callback: Optional[Callable] = field()
+
+    def __hash__(self):
+        return hash(self.short_channel_id + str(self.channel_id) + str(self.created_at.isoformat()))
+
+    def __eq__(self, other):
+        if not isinstance(other, Htlc):
+            return False
+        return (self.short_channel_id == other.short_channel_id and
+                self.channel_id == other.channel_id and
+                self.created_at == other.created_at)
+
+    @classmethod
+    def from_dict(cls: type['Htlc'], htlc_dict: dict[str, Any], request_callback: Callable) -> 'Htlc':
+        return Htlc(
+            state=HtlcState.ACCEPTED,
+            short_channel_id=htlc_dict["short_channel_id"],
+            channel_id=htlc_dict["id"],
+            amount_msat=htlc_dict["amount_msat"],
+            created_at=datetime.now(tz=timezone.utc),
+            request_callback=request_callback
+        )
+
+    def to_json(self):
+        return {
+            "_type": "Htlc",
+            "state": self.state.value,
+            "short_channel_id": self.short_channel_id,
+            "channel_id": self.channel_id,
+            "amount_msat": self.amount_msat,
+            "created_at": self.created_at.isoformat(),
+            # the request_callback is not serializable, we re-add it once CLN replayed the htlc after restart
+        }
+
+    @classmethod
+    def from_json(cls, data: dict) -> 'Htlc':
+        # Verify this is indeed Htlc data
+        if data.get("_type") != "Htlc":
+            raise ValueError("Invalid data type for Htlc")
+
+        return cls(
+            state=HtlcState(data["state"]),
+            short_channel_id=data["short_channel_id"],
+            channel_id=data["channel_id"],
+            amount_msat=data["amount_msat"],
+            created_at=datetime.fromisoformat(data["created_at"]),
+            request_callback=None
+        )
+
+    def add_new_htlc_callback(self, request_callback: Callable) -> None:
+        self.request_callback = request_callback
+
+    def fail(self) -> None:
+        """Fail HTLC with incorrect_or_unknown_payment_details"""
+        if not self.state == HtlcState.ACCEPTED:
+            raise InvalidHtlcState("fail(): Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        assert(self.request_callback is not None), "Htlc has no callback set on fail"
+        self.state = HtlcState.CANCELLED
+        self.request_callback.set_result({"result": "fail", "failure_message": "400F"})
+
+    def fail_timeout(self) -> None:
+        """Fail HTLC with incorrect_or_unknown_payment_details"""
+        if not self.state == HtlcState.ACCEPTED:
+            raise InvalidHtlcState("fail(): Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        assert(self.request_callback is not None), "Htlc has no callback set on timeout"
+        self.state = HtlcState.CANCELLED
+        self.request_callback.set_result({"result": "fail", "failure_message": "0017"})  # mpp timeout
+
+    def settle(self, preimage: bytes) -> None:
+        """Settle HTLC with correct payment details"""
+        if not self.state == HtlcState.ACCEPTED:
+            raise InvalidHtlcState("Htlc is not in ACCEPTED state, is: {}".format(self.state))
+        assert(self.request_callback is not None), "Htlc has no callback set on settle"
+        self.state = HtlcState.SETTLED
+        self.request_callback.set_result({"result": "resolve",
+                                          "payment_key": preimage.hex()})
+
+class InvalidHtlcState(Exception):
+    pass
+
+class InvoiceState(enum.Enum):
+    SETTLED = 1
+    FUNDED = 2
+    UNFUNDED = 3
+    FAILED = 4
+
+@stored_in("hold_invoices")
+@attr.s(auto_attribs=True)
+class HoldInvoice:
+    payment_hash: bytes
+    bolt11: str
+    amount_msat: int
+    expiry: int
+    incoming_htlcs: Set[Htlc] = attr.Factory(set)
+    funding_status: InvoiceState = attr.Factory(lambda: InvoiceState.UNFUNDED)
+    created_at: int = attr.Factory(lambda: int(time.time()))
+    associated_invoice: bytes = attr.Factory(lambda: None)  # payment_hash of the related prepay invoice
+
+    def attach_prepay_invoice(self, invoice_payment_hash: bytes) -> None:
+        """Attach a prepay invoice payment hash to this HoldInvoice"""
+        if self.associated_invoice is not None:
+            raise DuplicateInvoiceCreationError("HoldInvoice already has a related PrepayInvoice")
+        self.associated_invoice = invoice_payment_hash
+
+    def get_prepay_invoice(self) -> Optional[bytes]:
+        """Returns the payment_hash of the associated prepay invoice"""
+        return self.associated_invoice
+
+    def find_htlc(self, new_htlc: Htlc) -> Optional[Htlc]:
+        for stored_htlc in self.incoming_htlcs:
+            if stored_htlc == new_htlc:
+                return stored_htlc
+        return None
+
+    def is_fully_funded(self):
+        """Returns True if the stored incoming htlcs sum up to the invoice amount or more."""
+        return (sum(stored_htlc.amount_msat for stored_htlc in self.incoming_htlcs if stored_htlc.state in
+                    [HtlcState.ACCEPTED, HtlcState.SETTLED])
+                >= self.amount_msat)
+
+    def cancel_all_htlcs(self) -> None:
+        for stored_htlc in self.incoming_htlcs:
+            if stored_htlc.state == HtlcState.ACCEPTED:
+                stored_htlc.fail()
+        self.funding_status = InvoiceState.FAILED
+
+    def cancel_expired_htlcs(self) -> bool:
+        """Cancel all expired htlcs and return True if changes need to be saved"""
+        changes = False
+        for stored_htlc in self.incoming_htlcs:
+            if stored_htlc.state == HtlcState.ACCEPTED and (datetime.now(timezone.utc) -
+                                                            stored_htlc.created_at).total_seconds() > self.expiry:
+                changes = True
+                stored_htlc.fail_timeout()
+        if changes and self.funding_status == InvoiceState.FUNDED and not self.is_fully_funded():
+            # set invoice to unfunded again in case it was already set funded and we are now below the threshold
+            self.funding_status = InvoiceState.UNFUNDED
+        return changes
+
+    def settle(self, preimage: bytes) -> None:
+        assert self.payment_hash == sha256(preimage), f"Invalid preimage in settle(): {preimage.hex()}"
+        if not self.is_fully_funded():
+            raise InsufficientFundedInvoiceError(f"HoldInvoice {self.payment_hash} is not fully funded")
+        for stored_htlc in self.incoming_htlcs:
+            if stored_htlc.state == HtlcState.ACCEPTED:
+                stored_htlc.settle(preimage)
+        self.funding_status = InvoiceState.SETTLED
+
+    def to_json(self):
+        return {
+            "payment_hash": self.payment_hash.hex(),
+            "bolt11": self.bolt11,
+            "amount_msat": self.amount_msat,
+            "expiry": self.expiry,
+            "incoming_htlcs": [stored_htlc.to_json() for stored_htlc in self.incoming_htlcs],
+            "funding_status": self.funding_status.value,
+            "created_at": self.created_at,
+            "associated_invoice": self.associated_invoice.hex() if self.associated_invoice else None
+        }
+
+    @classmethod
+    def from_json(cls, data: dict):
+        # deserializing the htlcs first
+        htlcs = set()
+        for restored_htlc in data["incoming_htlcs"]:
+            htlc = Htlc.from_json(restored_htlc)
+            htlcs.add(htlc)
+
+        return cls(
+            payment_hash=bytes.fromhex(data["payment_hash"]),
+            bolt11=data["bolt11"],
+            amount_msat=data["amount_msat"],
+            expiry=data["expiry"],
+            incoming_htlcs=htlcs,
+            funding_status=InvoiceState(data["funding_status"]),
+            created_at=data["created_at"],
+            associated_invoice=bytes.fromhex(data["associated_invoice"]) if data["associated_invoice"] else None
+        )
+
+class DuplicateInvoiceCreationError(Exception):
+    pass
+
+class InsufficientFundedInvoiceError(Exception):
+    pass
 
 @attr.s
 class BaseInvoice:

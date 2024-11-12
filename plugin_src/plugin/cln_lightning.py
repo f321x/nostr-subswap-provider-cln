@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import time
+import traceback
 from datetime import datetime
 from typing import NamedTuple, Optional, Callable, Dict, Tuple, Any, List
 from enum import IntEnum
@@ -11,13 +12,13 @@ from decimal import Decimal
 from .cln_logger import PluginLogger
 from .cln_plugin import CLNPlugin
 from .crypto import sha256
-from .invoices import PR_UNPAID, PR_PAID, Invoice, BaseInvoice, LN_EXPIRY_NEVER
+from .invoices import PR_UNPAID, PR_PAID, Invoice, LN_EXPIRY_NEVER
 from .json_db import JsonDB
-from .plugin_config import PluginConfig
+from .plugin_config import PluginConfig, Keypair
 from .constants import MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 from .utils import call_blocking_with_timeout, ShortID
-from .lnutil import (LnFeatures, filter_suitable_recv_chans, HoldInvoice, DuplicateInvoiceCreationError, Htlc,
-                     HtlcState, InvoiceState)
+from .lnutil import LnFeatures, filter_suitable_recv_chans
+from .invoices import HoldInvoice, DuplicateInvoiceCreationError, Htlc, HtlcState, InvoiceState
 from .lnaddr import LnAddr, lnencode_unsigned
 from .bitcoin import COIN
 
@@ -62,7 +63,6 @@ class CLNLightning:
         self.__payment_info = db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
         self.__preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
         self.__invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
-        # todo: make HoldInvoice StoredObject
         self.__hold_invoices = db.get_dict('hold_invoices')  # type: Dict[str, HoldInvoice]  # HASH[hex] -> bolt11
         self.__payment_secret_key = plugin_instance.derive_secret("payment_secret")
         self.monitoring_tasks = [] # type: List[asyncio.Task]
@@ -95,9 +95,9 @@ class CLNLightning:
                         # cancel expired htlcs
                         if invoice.cancel_expired_htlcs():
                             self.__logger.warning(f"cancel_expired_htlcs: cancelled expired htlcs for invoice {invoice.payment_hash}")
-                            self.__db.write()
+                            self.update_invoice(invoice)
             except Exception as e:
-                self.__logger.error(f"monitor_expiries loop encountered an error: {e}")
+                self.__logger.error(f"monitor_expiries loop encountered an error:\n{traceback.format_exc()}")
             time.sleep(10)
 
     def callback_handler(self):
@@ -119,41 +119,46 @@ class CLNLightning:
                                 if prepay_invoice.funding_status is InvoiceState.FUNDED:
                                     # redeem the prepay invoice first
                                     prepay_invoice.settle(self.get_preimage(prepay_invoice_hash))
-                                    self.__db.write()
-                                else:
-                                    self.__logger.warning(f"callback_handler: prepay invoice "
-                                                          f"{prepay_invoice.payment_hash} not funded, but swap invoice is")
+                                    self.update_invoice(prepay_invoice)
+                                    self.__logger.debug(f"callback_handler: prepay invoice "
+                                                        f"{prepay_invoice.payment_hash.hex()} redeemed")
+                                else:  # prepay invoice not yet funded
                                     continue
                             self.__logger.debug(f"callback_handler: invoice {invoice.payment_hash.hex()} fully funded, "
                                                 f"calling callback")
-                            # Call the callback outside the lock
-                            self.__invoice_lock.release()
-                            try:
-                                callback(invoice.payment_hash)
-                                self.unregister_hold_invoice(invoice.payment_hash)
-                            finally:
-                                self.__invoice_lock.acquire()
+
+                            # Call the callback
+                            callback(invoice.payment_hash)
+                            self.unregister_hold_invoice(invoice.payment_hash)
+
             except Exception as e:
-                self.__logger.error(f"callback_handler encountered an error: {e}")
+                self.__logger.error(f"callback_handler encountered an error:\n{traceback.format_exc()}")
             time.sleep(9)
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs) -> None:
-        self.__logger.debug("htlc_accepted hook called")
         if "forward_to" in kwargs:  # ignore forwards
+            self.__logger.debug(f"plugin_htlc_accepted_hook: ignoring forward htlc")
             return request.set_result({"result": "continue"})
 
         with self.__invoice_lock:
             invoice = self.get_hold_invoice(bytes.fromhex(htlc["payment_hash"]))
             if invoice is None:  # not a hold invoice we know about
+                self.__logger.debug(f"plugin_htlc_accepted_hook: htlc for unknown invoice")
                 return request.set_result({"result": "continue"})
 
             # htlc that affects one of our stored hold invoices
             try:
                 if self.handle_htlc(invoice, htlc, onion, request):
-                    self.__db.write()  # saves the changes to the invoice
+                    self.update_invoice(invoice)  # saves the changes to the invoice
             except Exception as e:
-                self.__logger.error(f"plugin_htlc_accepted_hook failed: {e}")
+                self.__logger.error(f"plugin_htlc_accepted_hook failed:\n{traceback.format_exc()}")
                 return request.set_result({"result": "continue"})
+
+    def update_invoice(self, invoice: HoldInvoice) -> None:
+        """Update the invoice in the db so it reflects all internal changes by calling __setattr__ in the StoredDict"""
+        self.__hold_invoices.pop(invoice.payment_hash.hex())
+        self.__hold_invoices[invoice.payment_hash.hex()] = invoice
+        self.__db.write()
 
     def handle_htlc(self, target_invoice: HoldInvoice, incoming_htlc: dict[str, Any], onion, request) -> bool:
         """Validates and stores the incoming htlc, returns True if changes need to be saved in db
@@ -218,19 +223,26 @@ class CLNLightning:
     #         case HtlcState.Cancelled:
     #             pass
 
-    # async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
-    #     retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
-    #     try:
-    #         result = await call_blocking_with_timeout(self.rpc.pay(bolt11=bolt11, retry_for=retry_for),
-    #                                             timeout=retry_for + 30)
-    #     except Exception as e:
-    #         return False, "pay_invoice call to CLN failed: " + str(e)
-    #
-    #     # check if the payment was successful, currently we assume it failed if it's not "complete"
-    #     if 'payment_preimage' in result and result['payment_preimage'] and result['status'] == 'complete':
-    #     :TODO is complete suitable?
-    #         return True, result['payment_preimage']
-    #     return False, result
+    async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
+        try:  # first check if payment was already initiated earlier
+            existing_pay_req = self.__rpc.listpays(bolt11=bolt11)
+            if existing_pay_req['status'] == 'complete':
+                return True, existing_pay_req['preimage']
+            elif existing_pay_req['status'] == "pending":
+                return False, f"payment is already pending {existing_pay_req['status']}"
+        except Exception as e:
+            pass
+
+        retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
+        try:
+            result = await call_blocking_with_timeout(self.__rpc.pay(bolt11=bolt11, retry_for=retry_for),
+                                                timeout=retry_for + 30)
+        except Exception as e:
+            return False, "pay_invoice call to CLN failed: " + str(e)
+
+        if 'payment_preimage' in result and result['payment_preimage'] and result['status'] == 'complete':
+            return True, result['payment_preimage']
+        return False, result
 
     def create_payment_info(self, *, amount_msat: Optional[int], write_to_disk=True) -> bytes:
         payment_preimage = os.urandom(32)
@@ -265,17 +277,17 @@ class CLNLightning:
     #     if write_to_disk:
     #         self.__db.write()
 
-    # def get_invoice(self, key: str) -> Optional[Invoice]:
-    #     return self.__invoices.get(key)
+    def get_invoice(self, key: str) -> Optional[Invoice]:
+        return self.__invoices.get(key)
 
     def get_hold_invoice(self, payment_hash: bytes) -> Optional[HoldInvoice]:
         return self.__hold_invoices.get(payment_hash.hex())
 
-    # def delete_invoice(self, key: str) -> None:
-    #     inv = self.__invoices.pop(key)
-    #     if inv is None:
-    #         return
-    #     self.__db.write()
+    def delete_invoice(self, key: str) -> None:
+        inv = self.__invoices.pop(key)
+        if inv is None:
+            return
+        self.__db.write()
 
     def get_regular_bolt11_invoice(  # we generate the preimage
             self, *,
