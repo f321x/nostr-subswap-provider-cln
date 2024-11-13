@@ -114,7 +114,7 @@ class CLNLightning:
                             continue
                         if invoice.funding_status is InvoiceState.FUNDED:
                             prepay_invoice_hash = invoice.get_prepay_invoice()
-                            if prepay_invoice_hash is not None:
+                            if prepay_invoice_hash is not None:  # check if there is a prepay invoice attached
                                 prepay_invoice = self.get_hold_invoice(prepay_invoice_hash)
                                 if prepay_invoice.funding_status is InvoiceState.FUNDED:
                                     # redeem the prepay invoice first
@@ -122,14 +122,14 @@ class CLNLightning:
                                     self.update_invoice(prepay_invoice)
                                     self._logger.debug(f"callback_handler: prepay invoice "
                                                         f"{prepay_invoice.payment_hash.hex()} redeemed")
-                                else:  # prepay invoice not yet funded
+                                else:  # prepay invoice not yet funded, so we wait for it to be funded
                                     continue
                             self._logger.debug(f"callback_handler: invoice {invoice.payment_hash.hex()} fully funded, "
                                                 f"calling callback")
 
                             # Call the callback
                             callback(invoice.payment_hash)
-                            self.unregister_hold_invoice(invoice.payment_hash)
+                            self.unregister_hold_invoice_callback(invoice.payment_hash)
 
             except Exception as e:
                 self._logger.error(f"callback_handler encountered an error:\n{traceback.format_exc()}")
@@ -142,7 +142,7 @@ class CLNLightning:
 
         with self._invoice_lock:
             invoice = self.get_hold_invoice(bytes.fromhex(htlc["payment_hash"]))
-            if invoice is None:  # not a hold invoice we know about
+            if invoice is None:  # htlc doesn't belong to a hold invoice we know about
                 self._logger.debug(f"plugin_htlc_accepted_hook: htlc for unknown invoice")
                 return request.set_result({"result": "continue"})
 
@@ -210,7 +210,8 @@ class CLNLightning:
         if target_invoice.is_fully_funded():
             target_invoice.funding_status = InvoiceState.FUNDED
 
-        self._logger.debug(f"handle_htlc: htlc accepted for invoice {target_invoice.payment_hash}, value: {htlc.amount_msat}")
+        self._logger.debug(f"handle_htlc: htlc accepted for invoice {target_invoice.payment_hash.hex()}, "
+                           f"value: {htlc.amount_msat}")
         return True
 
 
@@ -322,16 +323,19 @@ class CLNLightning:
         return bolt11, label_hex
 
     def register_hold_invoice_callback(self, payment_hash: Union[bytes, str], callback: Callable) -> None:
+        """Used to register the swap invoice (not prepay invoice) with the callback manager"""
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
         self._hold_invoice_callbacks[payment_hash] = callback
 
-    def unregister_hold_invoice(self, payment_hash: Union[bytes, str]) -> None:
+    def unregister_hold_invoice_callback(self, payment_hash: Union[bytes, str]) -> None:
+        """Used to unregister the swap invoice from the callback manager"""
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
         self._hold_invoice_callbacks.pop(payment_hash)
 
     def save_hold_invoice(self, invoice: HoldInvoice) -> None:
+        """Saves a hold invoice to the db"""
         self._hold_invoices[invoice.payment_hash.hex()] = invoice
         self._db.write()
 
