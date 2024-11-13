@@ -275,8 +275,10 @@ class CLNLightning:
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
         with self._payment_info_lock:
-            self._payment_info.pop(payment_hash, None)
-            self._preimages.pop(payment_hash, None)
+            info_res = self._payment_info.pop(payment_hash, None)
+            preimage_res = self._preimages.pop(payment_hash, None)
+        if info_res is None and preimage_res is None:
+            return
         self._db.write()
 
     # def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
@@ -287,19 +289,19 @@ class CLNLightning:
     #     if write_to_disk:
     #         self._db.write()
 
-    # def get_invoice(self, key: str) -> Optional[Invoice]:
-    #     return self._invoices.get(key)
+    def get_invoice(self, key: str) -> Optional[Invoice]:
+        return self._invoices.get(key)
 
     def get_hold_invoice(self, payment_hash: Union[str, bytes]) -> Optional[HoldInvoice]:
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
         return self._hold_invoices.get(payment_hash)
 
-    # def delete_invoice(self, key: str) -> None:
-    #     inv = self._invoices.pop(key)
-    #     if inv is None:
-    #         return
-    #     self._db.write()
+    def delete_invoice(self, key: str) -> None:
+        inv = self._invoices.pop(key, None)
+        if inv is None:
+            return
+        self._db.write()
 
     def get_regular_bolt11_invoice(  # we generate the preimage
             self, *,
@@ -349,7 +351,9 @@ class CLNLightning:
         self._db.write()
 
     def delete_hold_invoice(self, payment_hash: bytes) -> None:
-        self._hold_invoices.pop(payment_hash.hex())
+        res = self._hold_invoices.pop(payment_hash.hex(), None)
+        if res is None:
+            return
         self._db.write()
 
     # def save_forwarding_failure(self, payment_key_hex: str, failure_msg: str):
