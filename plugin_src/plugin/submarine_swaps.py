@@ -272,19 +272,21 @@ class SwapManager:
 #             self.logger.info(f'cannot cancel swap {swap.payment_hash.hex()}: already funded')
 #             return
 #         self._fail_swap(swap, 'user cancelled')
-#
-#     def _fail_swap(self, swap: SwapData, reason: str):
-#         self.logger.info(f'failing swap {swap.payment_hash.hex()}: {reason}')
-#         if not swap.is_reverse and swap.payment_hash in self.lnworker.hold_invoice_callbacks:
-#             self.lnworker.unregister_hold_invoice(swap.payment_hash)
-#             payment_secret = self.lnworker.get_payment_secret(swap.payment_hash)
-#             payment_key = swap.payment_hash + payment_secret
-#             e = OnionRoutingFailure(code=OnionFailureCode.INCORRECT_OR_UNKNOWN_PAYMENT_DETAILS, data=b'')
-#             self.lnworker.save_forwarding_failure(payment_key.hex(), failure_message=e)
-#         self.lnwatcher.remove_callback(swap.lockup_address)
-#         if swap.funding_txid is None:
-#             self.swaps.pop(swap.payment_hash.hex())
-#
+
+    def _fail_swap(self, swap: SwapData, reason: str):
+        self.logger.info(f'failing swap {swap.payment_hash.hex()}: {reason}')
+        if not swap.is_reverse and swap.payment_hash in self.lnworker._hold_invoice_callbacks:
+            self.lnworker.unregister_hold_invoice_callback(swap.payment_hash)
+            for payment_hash in [swap.payment_hash, swap.prepay_hash]:
+                invoice = self.lnworker.get_hold_invoice(payment_hash)
+                if invoice:
+                    invoice.cancel_all_htlcs()
+                    self.lnworker.delete_hold_invoice(payment_hash)
+                self.lnworker.delete_payment_info(payment_hash)
+        self.lnwatcher.remove_callback(swap.lockup_address)
+        if swap.funding_txid is None:
+            self.swaps.pop(swap.payment_hash.hex())
+
 #     @log_exceptions
 #     async def _claim_swap(self, swap: SwapData) -> None:
 #         assert self.network
