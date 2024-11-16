@@ -50,7 +50,8 @@ class CLNSwapProvider:
         self.json_db = JsonDB(s=storage.read(), storage=storage, logger=self.logger)
 
 
-        # self.chain_monitor = ChainMonitor(config=self.config)
+        self.chain_monitor = ChainMonitor(bcore_rpc_credentials=self.config.bcore_rpc_credentials,
+                                          logger=self.logger)
 
         # cln chain wallet
         # self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,

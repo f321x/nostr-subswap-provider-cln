@@ -12,6 +12,7 @@ from .lnutil import hex_to_bytes, bytes_to_hex
 from .json_db import StoredObject
 from .cln_logger import PluginLogger
 from .constants import AbstractNet, BitcoinMainnet, BitcoinTestnet, BitcoinSignet, BitcoinRegtest
+from .utils import BitcoinRPCCredentials
 
 
 class PluginConfig:
@@ -20,6 +21,7 @@ class PluginConfig:
     def __init__(self, *, nostr_secret: bytes, cln_configuration: dict, logger: PluginLogger):
         self.nostr_keypair = Keypair.from_private_key(nostr_secret) # plugin.derive_secret("NOSTRSECRET"))
         self.cln_config: dict = cln_configuration
+        self.bcore_rpc_credentials = BitcoinRPCCredentials.from_cln_config_dict(cln_configuration)
         self.network = self.__parse_network_type(cln_configuration["network"]["value_str"])  # type: Optional[AbstractNet]
         self.nostr_relays: [Relay] = []
         self.swapserver_fee_millionths: int = 10_000
