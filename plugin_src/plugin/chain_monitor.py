@@ -78,10 +78,10 @@ class ChainMonitor:
             raise ChainMonitorRpcError(f"ChainMonitor is_up_to_date: Could not get blockchain info: {e}")
         return True
 
-    def get_tx_height(self, txid_hex: str) -> TxMinedInfo:
+    async def get_tx_height(self, txid_hex: str) -> TxMinedInfo:
         try:
-            height = self.bcore.getblockcount()
-            raw_tx = self.bcore.getrawtransaction(txid=txid_hex, verbose=True)
+            height = await self.bcore.getblockcount()
+            raw_tx = await self.bcore.getrawtransaction(txid=txid_hex, verbose=True)
             return TxMinedInfo(
                 height=raw_tx["confirmations"] - height if raw_tx["confirmations"] > 0 else None,
                 conf=raw_tx["confirmations"],
@@ -93,11 +93,11 @@ class ChainMonitor:
         except Exception as e:
             raise ChainMonitorRpcError(f"ChainMonitor get_tx_height: Could not get raw transaction: {e}")
 
-    def get_transaction(self, txid_hex: str) -> Optional[Transaction]:
+    async def get_transaction(self, txid_hex: str) -> Optional[Transaction]:
         """getrawtransaction into Transaction object"""
         self._logger.debug(f"ChainMonitor: get_transaction: {txid_hex}")
         try:
-            raw_tx = self.bcore.getrawtransaction(txid=txid_hex, verbose=False)
+            raw_tx = await self.bcore.getrawtransaction(txid=txid_hex, verbose=False)
             return Transaction(raw=raw_tx)
         except BitcoinRPCError as e:
             if e.error["code"] == -5:  # No such mempool or blockchain transaction.

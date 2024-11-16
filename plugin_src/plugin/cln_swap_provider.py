@@ -52,6 +52,9 @@ class CLNSwapProvider:
 
         self.chain_monitor = ChainMonitor(bcore_rpc_credentials=self.config.bcore_rpc_credentials,
                                           logger=self.logger)
+        await self.chain_monitor.run()
+        print("synced: ", await self.chain_monitor.is_up_to_date())
+        print("tx height: ", await self.chain_monitor.get_tx_height())
 
         # cln chain wallet
         # self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,
