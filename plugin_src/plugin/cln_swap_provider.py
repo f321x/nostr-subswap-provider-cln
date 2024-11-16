@@ -54,7 +54,10 @@ class CLNSwapProvider:
                                           logger=self.logger)
         await self.chain_monitor.run()
         print("synced: ", await self.chain_monitor.is_up_to_date())
-        print("tx height: ", await self.chain_monitor.get_tx_height())
+        print("tx height: ", await self.chain_monitor
+              .get_tx_height("3960b8998ac35d2e2ac72badb9afd07ebfc4c47a2b11dd5ceb621411fa3806b3"))
+        print("tx: ", await self.chain_monitor
+              .get_transaction("3960b8998ac35d2e2ac72badb9afd07ebfc4c47a2b11dd5ceb621411fa3806b3"))
 
         # cln chain wallet
         # self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,
