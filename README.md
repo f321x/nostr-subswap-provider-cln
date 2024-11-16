@@ -18,6 +18,11 @@ fees of other providers can be seen in the Electrum Wallet.
 
 
 ### <u>Installation</u>
+#### Bitcoin Core backend
+The Plugin relies on a Bitcoin Core backend Core Lightning is setup to use. **Bitcoin Core has to enable** ```txindex=1```
+for the plugin to work. The Plugin automatically uses the RPC credentials CLN is using and doesn't require any additional setup.
+
+#### Plugin installation
 You can find a detailed guide on how to install plugins in CLN using the reckless package manager
 [-> here <-](https://docs.corelightning.org/docs/plugins).
 
@@ -30,6 +35,7 @@ Then you can install the plugin:
 ```bash
 $ reckless install nostr-subswap-provider-cln
 ```
+
 ### <u>Configuration</u>
 The plugin settings are configured using [environment variables](https://kinsta.com/knowledgebase/what-is-an-environment-variable/).
 
