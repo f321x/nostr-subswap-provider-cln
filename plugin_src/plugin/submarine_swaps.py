@@ -288,11 +288,11 @@ class SwapManager:
             self.swaps.pop(swap.payment_hash.hex())
 
 #     @log_exceptions
-#     async def _claim_swap(self, swap: SwapData) -> None:
-#         assert self.network
-#         assert self.lnwatcher
-#         if not self.lnwatcher.adb.is_up_to_date():
-#             return
+    async def _claim_swap(self, swap: SwapData) -> None:
+        # assert self.network
+        assert self.lnwatcher
+        if not self.lnwatcher.is_up_to_date():
+            return
 #         current_height = self.network.get_local_height()
 #         remaining_time = swap.locktime - current_height
 #         txos = self.lnwatcher.adb.get_addr_outputs(swap.lockup_address)
