@@ -69,10 +69,10 @@ class ChainMonitor:
             if not result["blocks"] == result["headers"]:
                 return False
 
-            best_block_time = await self.bcore.getblockheader(block_hash=result["bestblockhash"],
-                                                   verbose=True)["time"]
+            blockheader = await self.bcore.getblockheader(block_hash=result["bestblockhash"],
+                                                   verbose=True)
             # if last block is older than 60 minutes something is probably wrong and we should wait
-            if best_block_time < time.time() - 60 * 60:
+            if blockheader["time"] < time.time() - 60 * 60:
                 return False
         except Exception as e:
             raise ChainMonitorRpcError(f"ChainMonitor is_up_to_date: Could not get blockchain info: {e}")
@@ -80,10 +80,15 @@ class ChainMonitor:
 
     async def get_tx_height(self, txid_hex: str) -> TxMinedInfo:
         try:
-            height = await self.bcore.getblockcount()
             raw_tx = await self.bcore.getrawtransaction(txid=txid_hex, verbose=True)
+
+            height = None
+            if raw_tx["confirmations"] > 0:
+                blockheader = await self.bcore.getblockheader(block_hash=raw_tx["blockhash"], verbose=True)
+                height = blockheader["height"]
+
             return TxMinedInfo(
-                height=raw_tx["confirmations"] - height if raw_tx["confirmations"] > 0 else None,
+                height=height,
                 conf=raw_tx["confirmations"],
                 timestamp=raw_tx["blocktime"],
                 txpos=None,  # we don't have this info and don't need it
