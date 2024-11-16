@@ -15,6 +15,25 @@ services:
       - dev-net
     platform: linux/amd64
 
+  lightningd:
+    container_name: lightningd
+    image: elementsproject/lightningd:latest
+    volumes:
+      - lightningd_datadir:/root/.lightning
+      - bitcoin_datadir:/root/.bitcoin
+      - ${PWD}/cln-config:/root/.lightning/config
+      - ./plugins:/root/plugins
+    environment:
+      - NOSTR_RELAYS=wss://relay.damus.io,wss://relay.primal.net,wss://nos.lol
+      - SWAP_FEE_PPM=10000
+      - CONFIRMATION_TARGET_BLOCKS=6
+      - FALLBACK_FEE_SATVB=65
+      - PLUGIN_LOG_LEVEL=DEBUG
+    networks:
+      - dev-net
+    platform: linux/amd64
+    command: --network=signet
+
 # normal signet (needed to test fee estimation, kind of impossible to get signet coins)
 #  bitcoind:
 #    container_name: signet
@@ -43,26 +62,6 @@ services:
 #      - dev-net
 #    restart: always
 #    platform: linux/amd64
-
-  lightningd:
-    container_name: lightningd
-    image: elementsproject/lightningd:latest
-    volumes:
-      - lightningd_datadir:/root/.lightning
-      - bitcoin_datadir:/root/.bitcoin
-      - ${PWD}/cln-config:/root/.lightning/config
-      - ./plugins:/root/plugins
-    environment:
-      - NOSTR_RELAYS=wss://relay.damus.io,wss://relay.primal.net,wss://nos.lol
-      - SWAP_FEE_PPM=10000
-      - CONFIRMATION_TARGET_BLOCKS=6
-      - FALLBACK_FEE_SATVB=65
-      - PLUGIN_LOG_LEVEL=DEBUG
-    networks:
-      - dev-net
-    platform: linux/amd64
-    command: --network=signet
-
 
 volumes:
   bitcoin_datadir:
