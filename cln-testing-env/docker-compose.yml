@@ -4,7 +4,7 @@ services:
   bitcoind:
     container_name: mutinynet
     image: fedimint/mutinynet-bitcoind:master
-    command: --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333
+    command: --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333 -txindex=1
     ports:
       - 0.0.0.0:38333:38333
       - 0.0.0.0:38332:38332
