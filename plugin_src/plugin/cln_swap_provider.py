@@ -20,6 +20,7 @@ class CLNSwapProvider:
         logger: Optional[PluginLogger] = None,
         config: Optional[PluginConfig] = None,
         json_db: Optional[JsonDB] = None,
+        chain_monitor: Optional[ChainMonitor] = None,
         cln_chain_wallet: Optional[CLNChainWallet] = None,
         cln_lightning: Optional[CLNLightning] = None,
         swap_manager: Optional[SwapManager] = None
@@ -28,6 +29,7 @@ class CLNSwapProvider:
         self.logger = logger
         self.config = config
         self.json_db = json_db
+        self.chain_monitor = chain_monitor
         self.cln_chain_wallet = cln_chain_wallet
         self.cln_lightning = cln_lightning
         self.swap_manager = swap_manager
@@ -53,11 +55,11 @@ class CLNSwapProvider:
         self.chain_monitor = ChainMonitor(bcore_rpc_credentials=self.config.bcore_rpc_credentials,
                                           logger=self.logger)
         await self.chain_monitor.run()
-        print("synced: ", await self.chain_monitor.is_up_to_date())
-        print("tx height: ", await self.chain_monitor
-              .get_tx_height("3960b8998ac35d2e2ac72badb9afd07ebfc4c47a2b11dd5ceb621411fa3806b3"))
-        print("tx: ", await self.chain_monitor
-              .get_transaction("3960b8998ac35d2e2ac72badb9afd07ebfc4c47a2b11dd5ceb621411fa3806b3"))
+        # print("synced: ", await self.chain_monitor.is_up_to_date())
+        # print("tx height: ", await self.chain_monitor
+        #       .get_tx_height("3960b8998ac35d2e2ac72badb9afd07ebfc4c47a2b11dd5ceb621411fa3806b3"))
+        # print("tx: ", await self.chain_monitor
+        #       .get_transaction("3960b8998ac35d2e2ac72badb9afd07ebfc4c47a2b11dd5ceb621411fa3806b3"))
 
         # cln chain wallet
         # self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,
