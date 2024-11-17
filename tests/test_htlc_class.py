@@ -1,7 +1,4 @@
-import time
-
 import pytest
-from datetime import datetime, timezone
 from unittest.mock import Mock
 from plugin_src.plugin.invoices import Htlc, HtlcState, InvalidHtlcState
 
@@ -53,7 +50,7 @@ def test_htlc_from_dict(sample_htlc_dict, sample_callback):
 
 
 def test_htlc_to_json(basic_htlc):
-    """Test HTLC serialization to JSON"""
+    """Test serialization to JSON"""
     json_data = basic_htlc.to_json()
     assert json_data["_type"] == "Htlc"
     assert json_data["state"] == basic_htlc.state.value
@@ -127,7 +124,6 @@ def test_htlc_hash(basic_htlc):
         created_at=basic_htlc.created_at,
         request_callback=None
     )
-    print(hash(basic_htlc))
     assert hash(basic_htlc) == hash(similar_htlc)
 
 

@@ -238,10 +238,12 @@ class HoldInvoice:
             self.created_at = int(time.time())
             self.associated_invoice = None
 
-    def attach_prepay_invoice(self, invoice_payment_hash: bytes) -> None:
+    def attach_prepay_invoice(self, invoice_payment_hash: Union[str, bytes]) -> None:
         """Attach a prepay invoice payment hash to this HoldInvoice"""
         if self.associated_invoice is not None:
             raise DuplicateInvoiceCreationError("HoldInvoice already has a related PrepayInvoice")
+        if isinstance(invoice_payment_hash, str):
+            invoice_payment_hash = hex_to_bytes(invoice_payment_hash)
         self.associated_invoice = invoice_payment_hash
 
     def get_prepay_invoice(self) -> Optional[bytes]:
