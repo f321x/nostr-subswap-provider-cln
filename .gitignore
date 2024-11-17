@@ -4,3 +4,4 @@ venv
 .idea
 cln-testing-env/plugins/*
 *__pycache__*
+tests/*
