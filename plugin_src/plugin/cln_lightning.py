@@ -164,7 +164,7 @@ class CLNLightning:
         """Validates and stores the incoming htlc, returns True if changes need to be saved in db
         CLN will replay all unresolved HTLCs on restart"""
         self._logger.debug(f"handle_htlc: {incoming_htlc}")
-        htlc = Htlc.from_dict(incoming_htlc, request)
+        htlc = Htlc.from_cln_dict(incoming_htlc, request)
         if (existing := target_invoice.find_htlc(htlc)) is not None:
             existing.add_new_htlc_callback(request)
             self._logger.debug(f"handle_htlc: registering new callback for existing htlc invoice: {target_invoice.payment_hash.hex()}")
