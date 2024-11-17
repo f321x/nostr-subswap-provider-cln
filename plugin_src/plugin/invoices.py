@@ -109,26 +109,27 @@ class Htlc:
     short_channel_id: str = field()
     channel_id: int = field()
     amount_msat: int = field()
-    created_at: datetime = field()
+    created_at: int = field()
     request_callback: Optional[Callable] = field()
 
     def __hash__(self):
-        return hash(self.short_channel_id + str(self.channel_id) + str(self.created_at.isoformat()))
+        return hash(self.short_channel_id + str(self.channel_id) + str(self.created_at))
 
     def __eq__(self, other):
         if not isinstance(other, Htlc):
             return False
         return (self.short_channel_id == other.short_channel_id and
-                self.channel_id == other.channel_id)
+                self.channel_id == other.channel_id and
+                self.amount_msat == other.amount_msat)
 
     @classmethod
-    def from_dict(cls: type['Htlc'], htlc_dict: dict[str, Any], request_callback: Callable) -> 'Htlc':
+    def from_cln_dict(cls: type['Htlc'], htlc_dict: dict[str, Any], request_callback: Callable) -> 'Htlc':
         return Htlc(
             state=HtlcState.ACCEPTED,
             short_channel_id=htlc_dict["short_channel_id"],
             channel_id=htlc_dict["id"],
             amount_msat=htlc_dict["amount_msat"],
-            created_at=datetime.now(tz=timezone.utc),
+            created_at=int(time.time()),
             request_callback=request_callback
         )
 
@@ -139,7 +140,7 @@ class Htlc:
             "short_channel_id": self.short_channel_id,
             "channel_id": self.channel_id,
             "amount_msat": self.amount_msat,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at,
             # the request_callback is not serializable, we re-add it once CLN replayed the htlc after restart
         }
 
@@ -152,9 +153,9 @@ class Htlc:
         return cls(
             state=HtlcState(data["state"]),
             short_channel_id=data["short_channel_id"],
-            channel_id=data["channel_id"],
-            amount_msat=data["amount_msat"],
-            created_at=datetime.fromisoformat(data["created_at"]),
+            channel_id=int(data["channel_id"]),
+            amount_msat=int(data["amount_msat"]),
+            created_at=int(data["created_at"]),
             request_callback=None
         )
 
@@ -269,8 +270,7 @@ class HoldInvoice:
         """Cancel all expired htlcs and return True if changes need to be saved"""
         changes = False
         for stored_htlc in self.incoming_htlcs:
-            if stored_htlc.state == HtlcState.ACCEPTED and (datetime.now(timezone.utc) -
-                                                            stored_htlc.created_at).total_seconds() > self.expiry:
+            if stored_htlc.state == HtlcState.ACCEPTED and (int(time.time()) - stored_htlc.created_at) > self.expiry:
                 changes = True
                 stored_htlc.fail_timeout()
         if changes and self.funding_status == InvoiceState.FUNDED and not self.is_fully_funded():
