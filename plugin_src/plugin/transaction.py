@@ -824,6 +824,11 @@ class Transaction:
 
         self._cached_txid = None  # type: Optional[str]
 
+    def __eq__(self, other):
+        if not isinstance(other, Transaction):
+            return False
+        return self.serialize() == other.serialize()
+
     @property
     def locktime(self):
         self.deserialize()
