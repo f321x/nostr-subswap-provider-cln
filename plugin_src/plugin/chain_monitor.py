@@ -44,11 +44,11 @@ class ChainMonitor:
         except Exception as e:
             raise ChainMonitorRpcError(f"ChainMonitor _txindex_enabled: Could not get blockchain info: {e}")
 
-    async def _create_or_load_wallet(self) -> None:
+    async def _create_or_load_wallet(self, wallet_name: str) -> None:
         """We create or load an existing wallet without private keys to look up addresses.
         This wallet won't be used for to control any funds, only to monitor addresses."""
         try:
-            await self.bcore.acall(method="loadwallet", params=["cln-subswapplugin", True], timeout=HttpxTimeout(5))
+            await self.bcore.acall(method="loadwallet", params=[wallet_name, True], timeout=HttpxTimeout(5))
         except BitcoinRPCError as e:
             if e.error["code"] == -35:
                 self._logger.debug("ChainMonitor _create_or_load_wallet: Wallet already loaded")
@@ -61,13 +61,13 @@ class ChainMonitor:
             # wallet is not loaded if we didn't return above
             try:
                 await self.bcore.acall(method="createwallet",
-                                       params=["cln-subswapplugin", True, True, "", False, False, True],
+                                       params=[wallet_name, True, True, "", False, False, True],
                                        timeout=HttpxTimeout(5))
             except BitcoinRPCError as e:
                 raise ChainMonitorRpcError(f"ChainMonitor _create_or_load_wallet: Could not create wallet: {e}")
 
     async def _validate_wallet_name(self, wallet_name: str) -> None:
-        """Check if the correct wallet is loaded (and not some other wallet)"""
+        """Check if the correct wallet is loaded (and not some other wallet, e.g. through other application)"""
         try:
             wallet_info = await self.bcore.acall(method="getwalletinfo", params=[], timeout=HttpxTimeout(5))
             if wallet_info["walletname"] != wallet_name:
@@ -80,7 +80,7 @@ class ChainMonitor:
         await self._test_connection()
         if not await self._txindex_enabled():
             raise ChainMonitorRpcError("ChainMonitor: txindex is not enabled")
-        await self._create_or_load_wallet()
+        await self._create_or_load_wallet("cln-subswapplugin")
         await self._validate_wallet_name("cln-subswapplugin")
         while not await self.is_up_to_date():
             self._logger.info("ChainMonitor: Waiting for chain to sync")
@@ -190,7 +190,7 @@ class ChainMonitor:
             raise ChainMonitorRpcError(f"ChainMonitor get_local_height: Could not get blockcount: {e}")
 
     async def get_addr_outputs(self, address: str) -> List[PartialTxInput]:
-        funding_inputs: List[PartialTxInput] = []
+        funding_inputs: List[PartialTxInput] = []  # listunspent or listreceivedbyaddress
 
 
     def remove_tx(self, txid_hex: str) -> None:
