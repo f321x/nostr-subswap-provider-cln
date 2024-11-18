@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Dict
+from typing import Callable, Optional, List
 
 from httpx import Timeout as HttpxTimeout
 from bitcoinrpc import BitcoinRPC, RPCError as BitcoinRPCError
@@ -44,11 +44,34 @@ class ChainMonitor:
         except Exception as e:
             raise ChainMonitorRpcError(f"ChainMonitor _txindex_enabled: Could not get blockchain info: {e}")
 
+    async def _create_or_load_wallet(self) -> None:
+        """We create or load an existing wallet without private keys to look up addresses.
+        This wallet won't be used for to control any funds, only to monitor addresses."""
+        try:
+            await self.bcore.acall(method="loadwallet", params=["cln-subswapplugin", True], timeout=HttpxTimeout(5))
+        except BitcoinRPCError as e:
+            if e.error["code"] == -35:
+                self._logger.debug("ChainMonitor _create_or_load_wallet: Wallet already loaded")
+                return
+            elif e.error["code"] == -18:
+                self._logger.debug("ChainMonitor _create_or_load_wallet: Wallet not found, creating...")
+            else:
+                raise ChainMonitorRpcError(f"ChainMonitor _create_or_load_wallet: Could not load wallet: {e}")
+
+            # wallet is not loaded if we didn't return above
+            try:
+                await self.bcore.acall(method="createwallet",
+                                       params=["cln-subswapplugin", True, True, "", False, False, True],
+                                       timeout=HttpxTimeout(5))
+            except BitcoinRPCError as e:
+                raise ChainMonitorRpcError(f"ChainMonitor _create_or_load_wallet: Could not create wallet: {e}")
+
     async def run(self) -> None:
         """Run the chain monitor"""
         await self._test_connection()
         if not await self._txindex_enabled():
             raise ChainMonitorRpcError("ChainMonitor: txindex is not enabled")
+        await self._create_or_load_wallet()
         while not await self.is_up_to_date():
             self._logger.info("ChainMonitor: Waiting for chain to sync")
             await asyncio.sleep(10)
@@ -57,12 +80,11 @@ class ChainMonitor:
 
     async def monitoring_loop(self) -> None:
         """Main monitoring loop, triggering callbacks on each new block"""
-        last_height = await self.bcore.getblockcount()
+        last_height = await self.get_local_height()
         while True:
             await asyncio.sleep(10)
             try:
-                blockheight = await self.bcore.getblockcount()
-                assert blockheight > 10, "ChainMonitor: Invalid blockheight (sanity check)"
+                blockheight = await self.get_local_height()
                 if blockheight > last_height:
                     self._logger.debug(f"ChainMonitor: New blockheight: {blockheight}")
                     last_height = blockheight
@@ -77,6 +99,17 @@ class ChainMonitor:
                 await callback()
             except Exception as e:
                 self._logger.error(f"ChainMonitor: Error in chain callback: {e}")
+
+    async def import_address_to_monitor(self, address: str) -> None:
+        """Add an address to the wallet so bitcoin core begins monitoring it. This should happen right after creation
+        so we don't have to rescan which would be very slow."""
+        timestamp = int(time.time())
+        try:
+            await self.bcore.acall(method="importaddress",
+                                   params=[address, f"swapplugin({timestamp})", False, False],
+                                   timeout=HttpxTimeout(5))
+        except BitcoinRPCError as e:
+            raise ChainMonitorRpcError(f"ChainMonitor import_address_to_monitor: Could not import address: {e}")
 
     def add_callback(self, lookup_address, callback: Callable) -> None:
         self._logger.debug(f"ChainMonitor: Adding callback for address {lookup_address}")
@@ -137,8 +170,18 @@ class ChainMonitor:
         except Exception as e:
             raise ChainMonitorRpcError(f"ChainMonitor get_transaction: Could not get raw transaction {txid_hex}: {e}")
 
-    def get_addr_outputs(self, address: str) -> Dict[TxOutpoint, PartialTxInput]:
-        pass
+    async def get_local_height(self) -> int:
+        try:
+            height = await self.bcore.getblockcount()
+            assert isinstance(height, int)
+            assert height >= 10, f"ChainMonitor get_local_height: sanity check: Not enough blocks: {height}"
+            return height
+        except Exception as e:
+            raise ChainMonitorRpcError(f"ChainMonitor get_local_height: Could not get blockcount: {e}")
+
+    async def get_addr_outputs(self, address: str) -> List[PartialTxInput]:
+        funding_inputs: List[PartialTxInput] = []
+        
 
     def remove_tx(self, txid_hex: str) -> None:
         """Removes a transaction AND all its dependents/children

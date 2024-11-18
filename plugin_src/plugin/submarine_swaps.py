@@ -177,20 +177,6 @@ class SwapManager:
         self.use_nostr = True  # this plugin only uses nostr comm
         self.is_initialized = asyncio.Event()  # set once nostr is connected to relays
 
-#     def start_network(self, network: 'Network'):
-#         assert network
-#         if self.network is not None:
-#             self.logger.info('start_network: already started')
-#             return
-#         self.logger.info('start_network: starting main loop')
-#         self.network = network
-#         self.lnwatcher = self.lnworker.lnwatcher
-#         for k, swap in self.swaps.items():
-#             if swap.is_redeemed:
-#                 continue
-#             self.add_lnwatcher_callback(swap)
-#         asyncio.run_coroutine_threadsafe(self.main_loop(), self.network.asyncio_loop)
-
     # @log_exceptions
     async def run_nostr_server(self):
         with NostrTransport(config=self.config, sm=self) as transport:
@@ -204,14 +190,17 @@ class SwapManager:
                 await transport.publish_offer(self)
                 await asyncio.sleep(600)
 
-#     @log_exceptions
     async def main_loop(self):
+        # readd all swaps to lnwatcher
+        for k, swap in self.swaps.items():
+            if swap.is_redeemed:
+                continue
+            self.add_lnwatcher_callback(swap)
+
         tasks = [self.pay_pending_ln_invoices()]
         if self.is_server:
             if self.use_nostr:
                 tasks.append(self.run_nostr_server())
-            # if self.config.SWAPSERVER_PORT:
-            #     tasks.append(self.http_server.run())
 
         async with self.taskgroup as group:
             for task in tasks:
@@ -287,17 +276,17 @@ class SwapManager:
         if swap.funding_txid is None:
             self.swaps.pop(swap.payment_hash.hex())
 
-#     @log_exceptions
+    # @log_exceptions
     async def _claim_swap(self, swap: SwapData) -> None:
-        # assert self.network
         assert self.lnwatcher
-        if not self.lnwatcher.is_up_to_date():
+        if not await self.lnwatcher.is_up_to_date():
+            self.logger.warning('_claim_swap caled but core node not up to date, skipping')
             return
-#         current_height = self.network.get_local_height()
-#         remaining_time = swap.locktime - current_height
-#         txos = self.lnwatcher.adb.get_addr_outputs(swap.lockup_address)
+        current_height = await self.lnwatcher.get_local_height()
+        remaining_time = swap.locktime - current_height
+        txos = await self.lnwatcher.get_addr_outputs(swap.lockup_address)
 #
-#         for txin in txos.values():
+#         for txin in txos:
 #             if swap.is_reverse and txin.value_sats() < swap.onchain_amount:
 #                 # amount too low, we must not reveal the preimage
 #                 continue
@@ -458,7 +447,7 @@ class SwapManager:
             WITNESS_TEMPLATE_REVERSE_SWAP,
             {1:32, 5:ripemd(payment_hash), 7:their_pubkey, 10:locktime, 13:our_pubkey}
         )
-        swap, invoice, prepay_invoice = self.add_normal_swap(
+        swap, invoice, prepay_invoice = await self.add_normal_swap(
             redeem_script=redeem_script,
             locktime=locktime,
             onchain_amount_sat=onchain_amount_sat,
@@ -472,7 +461,7 @@ class SwapManager:
         return swap, invoice, prepay_invoice
 
 
-    def add_normal_swap(
+    async def add_normal_swap(
             self, *,
             redeem_script: bytes,
             locktime: int,  # onchain
@@ -498,7 +487,6 @@ class SwapManager:
             fallback_address=None,
             min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
         )
-        # add payment info to lnworker
         # self.lnworker.add_payment_info_for_hold_invoice(payment_hash, invoice_amount_sat)
 
         if prepay:
@@ -537,10 +525,11 @@ class SwapManager:
         )
         swap._payment_hash = payment_hash
         self._add_or_reindex_swap(swap)
+        await self.lnwatcher.import_address_to_monitor(lockup_address)  # adds the address to the bcore wallet
         self.add_lnwatcher_callback(swap)
         return swap, invoice.bolt11, prepay_invoice.bolt11
 
-#     def create_reverse_swap(self, *, lightning_amount_sat: int, their_pubkey: bytes) -> SwapData:
+#     async def create_reverse_swap(self, *, lightning_amount_sat: int, their_pubkey: bytes) -> SwapData:
 #         """ server method. """
 #         assert lightning_amount_sat is not None
 #         locktime = self.network.get_local_height() + LOCKTIME_DELTA_REFUND
@@ -597,6 +586,7 @@ class SwapManager:
 #             self.prepayments[prepay_hash] = payment_hash
 #         swap._payment_hash = payment_hash
 #         self._add_or_reindex_swap(swap)
+
 #         self.add_lnwatcher_callback(swap)
 #         return swap
 
@@ -1097,7 +1087,7 @@ class SwapManager:
 #         min_amt_oc = self.get_send_amount(self.get_min_amount(), is_reverse=False) or 0
 #         return max_amt_oc if max_amt_oc >= min_amt_oc else None
 #
-#     def server_create_normal_swap(self, request):
+#     async def server_create_normal_swap(self, request):
 #         # normal for client, reverse for server
 #         #request = await r.json()
 #         lightning_amount_sat = request['invoiceAmount']
@@ -1118,7 +1108,7 @@ class SwapManager:
 #         }
 #         return response
 
-    def server_create_swap(self, request):
+    async def server_create_swap(self, request):
         # reverse for client, forward for server
         # requesting a normal swap (old protocol) will raise an exception
         #request = await r.json()
@@ -1344,9 +1334,9 @@ class NostrTransport:  # (Logger):
         if method == 'addswapinvoice':
             r = self.sm.server_add_swap_invoice(request)
         elif method == 'createswap':
-            r = self.sm.server_create_swap(request)
+            r = await self.sm.server_create_swap(request)
         elif method == 'createnormalswap':
-            r = self.sm.server_create_normal_swap(request)
+            r = await self.sm.server_create_normal_swap(request)
         else:
             raise Exception(method)
         r['reply_to'] = event_id
