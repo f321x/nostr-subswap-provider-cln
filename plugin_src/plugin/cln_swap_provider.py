@@ -55,16 +55,11 @@ class CLNSwapProvider:
         self.chain_monitor = ChainMonitor(bcore_rpc_credentials=self.config.bcore_rpc_credentials,
                                           logger=self.logger)
         await self.chain_monitor.run()
-        # print("synced: ", await self.chain_monitor.is_up_to_date())
-        # print("tx height: ", await self.chain_monitor
-        #       .get_tx_height("3960b8998ac35d2e2ac72badb9afd07ebfc4c47a2b11dd5ceb621411fa3806b3"))
-        # print("tx: ", await self.chain_monitor
-        #       .get_transaction("3960b8998ac35d2e2ac72badb9afd07ebfc4c47a2b11dd5ceb621411fa3806b3"))
 
         # cln chain wallet
-        # self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,
-        #                                        config=self.config,
-        #                                        logger=self.logger)
+        self.cln_chain_wallet = CLNChainWallet(plugin_rpc=self.plugin_handler.plugin.rpc,
+                                               config=self.config,
+                                               logger=self.logger)
 
         # cln lightning handlers
         self.cln_lightning = CLNLightning(plugin_instance=self.plugin_handler,
@@ -72,9 +67,6 @@ class CLNSwapProvider:
                                           db=self.json_db,
                                           logger=self.logger)
         await self.cln_lightning.run()
-        info = self.cln_lightning.create_payment_info(amount_msat=1000)
-        b11 = self.cln_lightning.b11invoice_from_hash(payment_hash=info, amount_msat=1000, expiry=600, fallback_address=None)
-        print("b11: ", b11.bolt11)
 
         # swap manager
         # self.swap_manager = SwapManager(wallet=self.cln_chain_wallet,
@@ -99,7 +91,8 @@ class CLNSwapProvider:
             and self.json_db
             and self.cln_chain_wallet
             and self.cln_lightning
-            and self.swap_manager):
+            and self.swap_manager
+            and self.chain_monitor):
             return True
         return False
 
