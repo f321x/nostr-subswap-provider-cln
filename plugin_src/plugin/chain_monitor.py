@@ -66,12 +66,22 @@ class ChainMonitor:
             except BitcoinRPCError as e:
                 raise ChainMonitorRpcError(f"ChainMonitor _create_or_load_wallet: Could not create wallet: {e}")
 
+    async def _validate_wallet_name(self, wallet_name: str) -> None:
+        """Check if the correct wallet is loaded (and not some other wallet)"""
+        try:
+            wallet_info = await self.bcore.acall(method="getwalletinfo", params=[], timeout=HttpxTimeout(5))
+            if wallet_info["walletname"] != wallet_name:
+                raise WrongWalletLoadedError(f"ChainMonitor: Wallet name mismatch: {wallet_info['walletname']}")
+        except BitcoinRPCError as e:
+            raise ChainMonitorRpcError(f"ChainMonitor: Could not get wallet info: {e}")
+
     async def run(self) -> None:
         """Run the chain monitor"""
         await self._test_connection()
         if not await self._txindex_enabled():
             raise ChainMonitorRpcError("ChainMonitor: txindex is not enabled")
         await self._create_or_load_wallet()
+        await self._validate_wallet_name("cln-subswapplugin")
         while not await self.is_up_to_date():
             self._logger.info("ChainMonitor: Waiting for chain to sync")
             await asyncio.sleep(10)
@@ -181,7 +191,7 @@ class ChainMonitor:
 
     async def get_addr_outputs(self, address: str) -> List[PartialTxInput]:
         funding_inputs: List[PartialTxInput] = []
-        
+
 
     def remove_tx(self, txid_hex: str) -> None:
         """Removes a transaction AND all its dependents/children
@@ -193,4 +203,7 @@ class ChainMonitorRpcError(Exception):
     pass
 
 class ChainMonitorNotConnectedError(Exception):
+    pass
+
+class WrongWalletLoadedError(Exception):
     pass
