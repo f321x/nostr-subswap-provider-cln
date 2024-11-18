@@ -3,6 +3,7 @@ from typing import Callable, Optional, Dict
 from httpx import Timeout as HttpxTimeout
 from bitcoinrpc import BitcoinRPC, RPCError as BitcoinRPCError
 import time
+import asyncio
 
 from .cln_logger import PluginLogger
 from .utils import TxMinedInfo, BitcoinRPCCredentials
@@ -20,8 +21,8 @@ class ChainMonitor:
         else:
             raise Exception("ChainMonitor: No Bitcoin Core rpc config found")
         self._logger = logger
-        self.monitored_addresses = set()
         self.callbacks = {}
+        self.monitoring_task = None
 
     async def _test_connection(self) -> None:
         """Test the connection to the Bitcoin Core node"""
@@ -48,16 +49,41 @@ class ChainMonitor:
         await self._test_connection()
         if not await self._txindex_enabled():
             raise ChainMonitorRpcError("ChainMonitor: txindex is not enabled")
-        pass  # TODO: Implement callback monitoring
+        while not await self.is_up_to_date():
+            self._logger.info("ChainMonitor: Waiting for chain to sync")
+            await asyncio.sleep(10)
+        self.monitoring_task = asyncio.create_task(self.monitoring_loop())
+        self._logger.debug("ChainMonitor: Running...")
+
+    async def monitoring_loop(self) -> None:
+        """Main monitoring loop, triggering callbacks on each new block"""
+        last_height = await self.bcore.getblockcount()
+        while True:
+            await asyncio.sleep(10)
+            try:
+                blockheight = await self.bcore.getblockcount()
+                assert blockheight > 10, "ChainMonitor: Invalid blockheight (sanity check)"
+                if blockheight > last_height:
+                    self._logger.debug(f"ChainMonitor: New blockheight: {blockheight}")
+                    last_height = blockheight
+                    await self.trigger_callbacks()
+            except Exception as e:
+                self._logger.error(f"ChainMonitor: Error in monitoring loop: {e}")
+
+    async def trigger_callbacks(self) -> None:
+        """Trigger all callbacks for monitored addresses"""
+        for callback in self.callbacks.values():
+            try:
+                await callback()
+            except Exception as e:
+                self._logger.error(f"ChainMonitor: Error in chain callback: {e}")
 
     def add_callback(self, lookup_address, callback: Callable) -> None:
         self._logger.debug(f"ChainMonitor: Adding callback for address {lookup_address}")
-        self.monitored_addresses.add(lookup_address)
         self.callbacks[lookup_address] = callback
 
     def remove_callback(self, lookup_address) -> None:
         self._logger.debug(f"ChainMonitor: Removing callback for address {lookup_address}")
-        self.monitored_addresses.remove(lookup_address)
         self.callbacks.pop(lookup_address)
 
     async def is_up_to_date(self) -> bool:

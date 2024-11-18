@@ -72,6 +72,9 @@ class CLNSwapProvider:
                                           db=self.json_db,
                                           logger=self.logger)
         await self.cln_lightning.run()
+        info = self.cln_lightning.create_payment_info(amount_msat=1000)
+        b11 = self.cln_lightning.b11invoice_from_hash(payment_hash=info, amount_msat=1000, expiry=600, fallback_address=None)
+        print("b11: ", b11.bolt11)
 
         # swap manager
         # self.swap_manager = SwapManager(wallet=self.cln_chain_wallet,

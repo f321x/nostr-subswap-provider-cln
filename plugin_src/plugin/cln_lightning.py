@@ -364,7 +364,7 @@ class CLNLightning:
             amount_msat: int,
             message: Optional[str] = "",
             expiry: int,  # expiration of invoice (in seconds, relative)
-            fallback_address: Optional[str],
+            fallback_address: Optional[str] = None,
             min_final_cltv_expiry_delta: Optional[int] = None,
             store_invoice: bool = True) -> HoldInvoice:
         assert amount_msat > 0, f"b11invoice_from_hash: amount_msat must be > 0, but got {amount_msat}"
@@ -375,7 +375,7 @@ class CLNLightning:
             raise DuplicateInvoiceCreationError("b11invoice_from_hash: "
                                                 "invoice already exists in cln: " + payment_hash.hex())
 
-        invoice_features = LnFeatures.VAR_ONION_REQ | LnFeatures.PAYMENT_SECRET_REQ | LnFeatures.BASIC_MPP_OPT
+        invoice_features = LnFeatures(0) | LnFeatures.VAR_ONION_REQ | LnFeatures.PAYMENT_SECRET_REQ | LnFeatures.BASIC_MPP_OPT
         routing_hints = self._get_route_hints(amount_msat)
         lnaddr = LnAddr(
             net=self._config.network,

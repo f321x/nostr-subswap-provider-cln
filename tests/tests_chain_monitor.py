@@ -12,7 +12,7 @@ from plugin_src.plugin.utils import BitcoinRPCCredentials, TxMinedInfo
 from plugin_src.plugin.transaction import Transaction
 
 # Run the test with the following command:
-# pytest test_chain_monitor.py -v
+# pytest tests_chain_monitor.py -v
 
 @pytest.fixture(scope="function")
 def logger():
@@ -120,7 +120,6 @@ def test_add_callback(chain_monitor):
     mock_callback = Mock()
     address = "tb1qd28npep0s8frcm3y7dxqajkcy2m40eysplyr9v"
     chain_monitor.add_callback(address, mock_callback)
-    assert address in chain_monitor.monitored_addresses
     assert chain_monitor.callbacks[address] == mock_callback
 
 
@@ -130,7 +129,6 @@ def test_remove_callback(chain_monitor):
     address = "bc1qryhgpmfv03qjhhp2dj8nw8g4ewg08jzmgy3cyx"
     chain_monitor.add_callback(address, mock_callback)
     chain_monitor.remove_callback(address)
-    assert address not in chain_monitor.monitored_addresses
     assert address not in chain_monitor.callbacks
 
 
