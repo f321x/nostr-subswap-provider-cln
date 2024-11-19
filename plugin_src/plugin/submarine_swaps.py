@@ -173,7 +173,7 @@ class SwapManager:
             if swap.prepay_hash is not None:
                 self.prepayments[swap.prepay_hash] = bytes.fromhex(k)
         self.assert_constants()
-        self.is_server = True  # this plugin is always a server (todo: for now)
+        self.is_server = True  # this plugin is always a server
         self.use_nostr = True  # this plugin only uses nostr comm
         self.is_initialized = asyncio.Event()  # set once nostr is connected to relays
 
@@ -285,116 +285,116 @@ class SwapManager:
         current_height = await self.lnwatcher.get_local_height()
         remaining_time = swap.locktime - current_height
         txos = await self.lnwatcher.get_addr_outputs(swap.lockup_address)
-#
-#         for txin in txos:
-#             if swap.is_reverse and txin.value_sats() < swap.onchain_amount:
-#                 # amount too low, we must not reveal the preimage
-#                 continue
-#             break
-#         else:
-#             # swap not funded.
-#             txin = None
-#             # if it is a normal swap, we might have double spent the funding tx
-#             # in that case we need to fail the HTLCs
-#             if remaining_time <= 0:
-#                 self._fail_swap(swap, 'expired')
-#
-#         if txin:
-#             # the swap is funded
-#             # note: swap.funding_txid can change due to RBF, it will get updated here:
-#             swap.funding_txid = txin.prevout.txid.hex()
-#             swap._funding_prevout = txin.prevout
-#             self._add_or_reindex_swap(swap)  # to update _swaps_by_funding_outpoint
-#             funding_height = self.lnwatcher.adb.get_tx_height(txin.prevout.txid.hex())
-#             spent_height = txin.spent_height
-#             should_bump_fee = False
-#             if spent_height is not None:
-#                 swap.spending_txid = txin.spent_txid
-#                 if spent_height > 0:
-#                     if current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
-#                         self.logger.info(f'stop watching swap {swap.lockup_address}')
-#                         self.lnwatcher.remove_callback(swap.lockup_address)
-#                         swap.is_redeemed = True
-#                 elif spent_height == TX_HEIGHT_LOCAL:
-#                     if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
-#                         tx = self.lnwatcher.adb.get_transaction(txin.spent_txid)
-#                         try:
-#                             await self.network.broadcast_transaction(tx)
-#                         except TxBroadcastError:
-#                             self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
-#                     elif funding_height.height == TX_HEIGHT_LOCAL:
-#                         # the funding tx was double spent.
-#                         # this will remove both funding and child (spending tx) from adb
-#                         self.lnwatcher.adb.remove_transaction(swap.funding_txid)
-#                         swap.funding_txid = None
-#                         swap.spending_txid = None
-#                 else:
-#                     # spending tx is in mempool
-#                     pass
-#
-#             if not swap.is_reverse:
-#                 if swap.preimage is None and spent_height is not None:
-#                     # extract the preimage, add it to lnwatcher
-#                     claim_tx = self.lnwatcher.adb.get_transaction(txin.spent_txid)
-#                     preimage = claim_tx.inputs()[0].witness_elements()[1]
-#                     if sha256(preimage) == swap.payment_hash:
-#                         swap.preimage = preimage
-#                         self.logger.info(f'found preimage: {preimage.hex()}')
-#                         self.lnworker.preimages[swap.payment_hash.hex()] = preimage.hex()
-#                         # note: we must check the payment secret before we broadcast the funding tx
-#                     else:
-#                         # this is our refund tx
-#                         if spent_height > 0:
-#                             self.logger.info(f'refund tx confirmed: {txin.spent_txid} {spent_height}')
-#                             self._fail_swap(swap, 'refund tx confirmed')
-#                             return
-#                         else:
-#                             claim_tx.add_info_from_wallet(self.wallet)
-#                             claim_tx_fee = claim_tx.get_fee()
-#                             recommended_fee = self.get_claim_fee()
-#                             if claim_tx_fee * 1.1 < recommended_fee:
-#                                 should_bump_fee = True
-#                                 self.logger.info(f'claim tx fee too low {claim_tx_fee} < {recommended_fee}. we will bump the fee')
-#
-#                 if remaining_time > 0:
-#                     # too early for refund
-#                     return
-#             else:
-#                 if swap.preimage is None:
-#                     swap.preimage = self.lnworker.get_preimage(swap.payment_hash)
-#                 if swap.preimage is None:
-#                     if funding_height.conf <= 0:
-#                         return
-#                     key = swap.payment_hash.hex()
-#                     if remaining_time <= MIN_LOCKTIME_DELTA:
-#                         if key in self.invoices_to_pay:
-#                             # fixme: should consider cltv of ln payment
-#                             self.logger.info(f'locktime too close {key} {remaining_time}')
-#                             self.invoices_to_pay.pop(key, None)
-#                         return
-#                     if key not in self.invoices_to_pay:
-#                         self.invoices_to_pay[key] = 0
-#                     return
-#
-#                 if self.network.config.TEST_SWAPSERVER_REFUND:
-#                     # for testing: do not create claim tx
-#                     return
-#
-#             if spent_height is not None and not should_bump_fee:
-#                 return
-#             try:
-#                 tx = self._create_and_sign_claim_tx(txin=txin, swap=swap, config=self.wallet.config)
-#             except BelowDustLimit:
-#                 self.logger.info('utxo value below dust threshold')
-#                 return
-#             self.logger.info(f'adding claim tx {tx.txid()}')
-#             self.wallet.adb.add_transaction(tx)
-#             swap.spending_txid = tx.txid()
-#             if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
-#                 try:
-#                     await self.network.broadcast_transaction(tx)
-#                 except TxBroadcastError:
-#                     self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
+
+        for txin in txos:
+            if swap.is_reverse and txin.value_sats() < swap.onchain_amount:
+                # amount too low, we must not reveal the preimage
+                continue
+            break
+        else:
+            # swap not funded.
+            txin = None
+            # if it is a normal swap, we might have double spent the funding tx
+            # in that case we need to fail the HTLCs
+            if remaining_time <= 0:
+                self._fail_swap(swap, 'expired')
+
+        if txin:
+            # the swap is funded
+            # note: swap.funding_txid can change due to RBF, it will get updated here:
+            swap.funding_txid = txin.prevout.txid.hex()
+            swap._funding_prevout = txin.prevout
+            self._add_or_reindex_swap(swap)  # to update _swaps_by_funding_outpoint
+            funding_height = self.lnwatcher.get_tx_height(txin.prevout.txid.hex())
+            spent_height = txin.spent_height
+            should_bump_fee = False
+            # if spent_height is not None:
+            #     swap.spending_txid = txin.spent_txid
+            #     if spent_height > 0:
+            #         if current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
+            #             self.logger.info(f'stop watching swap {swap.lockup_address}')
+            #             self.lnwatcher.remove_callback(swap.lockup_address)
+            #             swap.is_redeemed = True
+            #     elif spent_height == TX_HEIGHT_LOCAL:
+            #         if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
+            #             tx = self.lnwatcher.adb.get_transaction(txin.spent_txid)
+            #             try:
+            #                 await self.network.broadcast_transaction(tx)
+            #             except TxBroadcastError:
+            #                 self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
+            #         elif funding_height.height == TX_HEIGHT_LOCAL:
+            #             # the funding tx was double spent.
+            #             # this will remove both funding and child (spending tx) from adb
+            #             self.lnwatcher.adb.remove_transaction(swap.funding_txid)
+            #             swap.funding_txid = None
+            #             swap.spending_txid = None
+            #     else:
+            #         # spending tx is in mempool
+            #         pass
+            #
+            # if not swap.is_reverse:
+            #     if swap.preimage is None and spent_height is not None:
+            #         # extract the preimage, add it to lnwatcher
+            #         claim_tx = self.lnwatcher.adb.get_transaction(txin.spent_txid)
+            #         preimage = claim_tx.inputs()[0].witness_elements()[1]
+            #         if sha256(preimage) == swap.payment_hash:
+            #             swap.preimage = preimage
+            #             self.logger.info(f'found preimage: {preimage.hex()}')
+            #             self.lnworker.preimages[swap.payment_hash.hex()] = preimage.hex()
+            #             # note: we must check the payment secret before we broadcast the funding tx
+            #         else:
+            #             # this is our refund tx
+            #             if spent_height > 0:
+            #                 self.logger.info(f'refund tx confirmed: {txin.spent_txid} {spent_height}')
+            #                 self._fail_swap(swap, 'refund tx confirmed')
+            #                 return
+            #             else:
+            #                 claim_tx.add_info_from_wallet(self.wallet)
+            #                 claim_tx_fee = claim_tx.get_fee()
+            #                 recommended_fee = self.get_claim_fee()
+            #                 if claim_tx_fee * 1.1 < recommended_fee:
+            #                     should_bump_fee = True
+            #                     self.logger.info(f'claim tx fee too low {claim_tx_fee} < {recommended_fee}. we will bump the fee')
+            #
+            #     if remaining_time > 0:
+            #         # too early for refund
+            #         return
+            # else:
+            #     if swap.preimage is None:
+            #         swap.preimage = self.lnworker.get_preimage(swap.payment_hash)
+            #     if swap.preimage is None:
+            #         if funding_height.conf <= 0:
+            #             return
+            #         key = swap.payment_hash.hex()
+            #         if remaining_time <= MIN_LOCKTIME_DELTA:
+            #             if key in self.invoices_to_pay:
+            #                 # fixme: should consider cltv of ln payment
+            #                 self.logger.info(f'locktime too close {key} {remaining_time}')
+            #                 self.invoices_to_pay.pop(key, None)
+            #             return
+            #         if key not in self.invoices_to_pay:
+            #             self.invoices_to_pay[key] = 0
+            #         return
+            #
+            #     if self.network.config.TEST_SWAPSERVER_REFUND:
+            #         # for testing: do not create claim tx
+            #         return
+            #
+            # if spent_height is not None and not should_bump_fee:
+            #     return
+            # try:
+            #     tx = self._create_and_sign_claim_tx(txin=txin, swap=swap, config=self.wallet.config)
+            # except BelowDustLimit:
+            #     self.logger.info('utxo value below dust threshold')
+            #     return
+            # self.logger.info(f'adding claim tx {tx.txid()}')
+            # self.wallet.adb.add_transaction(tx)
+            # swap.spending_txid = tx.txid()
+            # if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
+            #     try:
+            #         await self.network.broadcast_transaction(tx)
+            #     except TxBroadcastError:
+            #         self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
 
     def get_claim_fee(self):
         return self.get_fee(size_vb=CLAIM_FEE_SIZE)
