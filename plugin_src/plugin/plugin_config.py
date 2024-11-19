@@ -1,5 +1,3 @@
-import sys
-
 import attr
 import os
 import electrum_ecc as ecc
@@ -12,7 +10,7 @@ from .lnutil import hex_to_bytes, bytes_to_hex
 from .json_db import StoredObject
 from .cln_logger import PluginLogger
 from .constants import AbstractNet, BitcoinMainnet, BitcoinTestnet, BitcoinSignet, BitcoinRegtest
-from .utils import BitcoinRPCCredentials
+from .bitcoin_core_rpc import BitcoinRPCCredentials
 
 
 class PluginConfig:

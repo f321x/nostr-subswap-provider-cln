@@ -1,33 +1,25 @@
 from typing import Callable, Optional, List
 
 from httpx import Timeout as HttpxTimeout
-from bitcoinrpc import BitcoinRPC, RPCError as BitcoinRPCError
 import time
 import asyncio
 
 from .cln_logger import PluginLogger
-from .utils import TxMinedInfo, BitcoinRPCCredentials
+from .utils import TxMinedInfo
 from .transaction import Transaction, TxOutpoint, PartialTxInput
+from .bitcoin_core_rpc import BitcoinCoreRPC
 
-class ChainMonitor:
-    def __init__(self, logger: PluginLogger, bcore_rpc_credentials: BitcoinRPCCredentials = None,
-                 bcore_rpc: BitcoinRPC = None) -> None:
+class ChainMonitor(BitcoinCoreRPC):
+    def __init__(self, logger: PluginLogger, *args, **kwargs) -> None:
         """Takes the bitcoin core rpc config from cln and uses bcore as chain backend"""
-        if bcore_rpc is not None:
-            self.bcore = bcore_rpc
-        elif bcore_rpc_credentials is not None:
-            self.bcore = BitcoinRPC.from_config(url=bcore_rpc_credentials.url,
-                                                auth=bcore_rpc_credentials.auth)
-        else:
-            raise Exception("ChainMonitor: No Bitcoin Core rpc config found")
-        self._logger = logger
+        super().__init__(logger, *args, **kwargs)
         self.callbacks = {}
         self.monitoring_task = None
 
     async def _test_connection(self) -> None:
         """Test the connection to the Bitcoin Core node"""
         try:
-            result = await self.bcore.getblockchaininfo()
+            result = await self.iface.getblockchaininfo()
             self._logger.debug(f"ChainMonitor: Connected to Bitcoin Core: {result}")
             assert result["blocks"] > 10  # simple sanity check of result
         except Exception as e:
@@ -36,7 +28,7 @@ class ChainMonitor:
     async def _txindex_enabled(self) -> bool:
         """Check if txindex is enabled"""
         try:
-            result = await self.bcore.acall(method="getindexinfo", params=[], timeout=HttpxTimeout(5))
+            result = await self.iface.acall(method="getindexinfo", params=[], timeout=HttpxTimeout(5))
             self._logger.debug(f"ChainMonitor: _txindex_enabled: {result}")
             if not result.get("txindex", False) or not result["txindex"].get("synced", False):
                 return False
@@ -48,7 +40,7 @@ class ChainMonitor:
         """We create or load an existing wallet without private keys to look up addresses.
         This wallet won't be used for to control any funds, only to monitor addresses."""
         try:
-            await self.bcore.acall(method="loadwallet", params=[wallet_name, True], timeout=HttpxTimeout(5))
+            await self.iface.acall(method="loadwallet", params=[wallet_name, True], timeout=HttpxTimeout(5))
         except BitcoinRPCError as e:
             if e.error["code"] == -35:
                 self._logger.debug("ChainMonitor _create_or_load_wallet: Wallet already loaded")
@@ -60,7 +52,7 @@ class ChainMonitor:
 
             # wallet is not loaded if we didn't return above
             try:
-                await self.bcore.acall(method="createwallet",
+                await self.iface.acall(method="createwallet",
                                        params=[wallet_name, True, True, "", False, False, True],
                                        timeout=HttpxTimeout(5))
             except BitcoinRPCError as e:
@@ -69,7 +61,7 @@ class ChainMonitor:
     async def _validate_wallet_name(self, wallet_name: str) -> None:
         """Check if the correct wallet is loaded (and not some other wallet, e.g. through other application)"""
         try:
-            wallet_info = await self.bcore.acall(method="getwalletinfo", params=[], timeout=HttpxTimeout(5))
+            wallet_info = await self.iface.acall(method="getwalletinfo", params=[], timeout=HttpxTimeout(5))
             if wallet_info["walletname"] != wallet_name:
                 raise WrongWalletLoadedError(f"ChainMonitor: Wallet name mismatch: {wallet_info['walletname']}")
         except BitcoinRPCError as e:
@@ -115,7 +107,7 @@ class ChainMonitor:
         so we don't have to rescan which would be very slow."""
         timestamp = int(time.time())
         try:
-            await self.bcore.acall(method="importaddress",
+            await self.iface.acall(method="importaddress",
                                    params=[address, f"swapplugin({timestamp})", False, False],
                                    timeout=HttpxTimeout(5))
         except BitcoinRPCError as e:
@@ -135,13 +127,13 @@ class ChainMonitor:
     async def is_up_to_date(self) -> bool:
         """We check if bcore is fully synced as best as we can"""
         try:
-            result = await self.bcore.getblockchaininfo()
+            result = await self.iface.getblockchaininfo()
             if result["blocks"] < 10:  # simple sanity check of result
                 raise ChainMonitorRpcError("ChainMonitor is_up_to_date: Not enough blocks")
             if not result["blocks"] == result["headers"]:
                 return False
 
-            blockheader = await self.bcore.getblockheader(block_hash=result["bestblockhash"],
+            blockheader = await self.iface.getblockheader(block_hash=result["bestblockhash"],
                                                    verbose=True)
             # if last block is older than 60 minutes something is probably wrong and we should wait
             if blockheader["time"] < time.time() - 60 * 60:
@@ -152,11 +144,11 @@ class ChainMonitor:
 
     async def get_tx_height(self, txid_hex: str) -> TxMinedInfo:
         try:
-            raw_tx = await self.bcore.getrawtransaction(txid=txid_hex, verbose=True)
+            raw_tx = await self.iface.getrawtransaction(txid=txid_hex, verbose=True)
 
             height = None
             if raw_tx["confirmations"] > 0:
-                blockheader = await self.bcore.getblockheader(block_hash=raw_tx["blockhash"], verbose=True)
+                blockheader = await self.iface.getblockheader(block_hash=raw_tx["blockhash"], verbose=True)
                 height = blockheader["height"]
 
             return TxMinedInfo(
@@ -174,7 +166,7 @@ class ChainMonitor:
         """getrawtransaction into Transaction object"""
         self._logger.debug(f"ChainMonitor: get_transaction: {txid_hex}")
         try:
-            raw_tx = await self.bcore.getrawtransaction(txid=txid_hex, verbose=False)
+            raw_tx = await self.iface.getrawtransaction(txid=txid_hex, verbose=False)
             return Transaction(raw=raw_tx)
         except BitcoinRPCError as e:
             if e.error["code"] == -5:  # No such mempool or blockchain transaction.
@@ -185,7 +177,7 @@ class ChainMonitor:
 
     async def get_local_height(self) -> int:
         try:
-            height = await self.bcore.getblockcount()
+            height = await self.iface.getblockcount()
             assert isinstance(height, int)
             assert height >= 10, f"ChainMonitor get_local_height: sanity check: Not enough blocks: {height}"
             return height
@@ -197,7 +189,7 @@ class ChainMonitor:
         if it has already been spent again"""
         funding_inputs: List[PartialTxInput] = []
         try:
-            received = await self.bcore.acall(method="listreceivedbyaddress",
+            received = await self.iface.acall(method="listreceivedbyaddress",
                                               params=[1, True, True, address])
         except BitcoinRPCError as e:
             raise ChainMonitorRpcError(f"ChainMonitor: get_addr_outputs call for {address} failed: {e}")
