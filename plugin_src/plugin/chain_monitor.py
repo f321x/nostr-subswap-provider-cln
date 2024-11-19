@@ -119,6 +119,9 @@ class ChainMonitor:
                                    params=[address, f"swapplugin({timestamp})", False, False],
                                    timeout=HttpxTimeout(5))
         except BitcoinRPCError as e:
+            if e.error["code"] == -4:
+                raise WrongWalletLoadedError(f"ChainMonitor: "
+                                             f"Descriptor wallet loaded in bitcoin core, we need a legacy wallet {e}")
             raise ChainMonitorRpcError(f"ChainMonitor import_address_to_monitor: Could not import address: {e}")
 
     def add_callback(self, lookup_address, callback: Callable) -> None:
@@ -190,13 +193,56 @@ class ChainMonitor:
             raise ChainMonitorRpcError(f"ChainMonitor get_local_height: Could not get blockcount: {e}")
 
     async def get_addr_outputs(self, address: str) -> List[PartialTxInput]:
-        funding_inputs: List[PartialTxInput] = []  # listunspent or listreceivedbyaddress
+        """Getting utxos for the address in form of a PartialTxInput. The utxo will be marked spent
+        if it has already been spent again"""
+        funding_inputs: List[PartialTxInput] = []
+        try:
+            received = await self.bcore.acall(method="listreceivedbyaddress",
+                                              params=[1, True, True, address])
+        except BitcoinRPCError as e:
+            raise ChainMonitorRpcError(f"ChainMonitor: get_addr_outputs call for {address} failed: {e}")
+        if len(received) == 0:
+            raise UnknownAddressError(f"ChainMonitor: get_addr_outputs: Address {address} hasn't been imported before")
+        received_txids = received[0]['txids']  # all txids of transactions that spent to 'address'
+        for txid in received_txids:
+            utxo = await self._get_partial_txin(txid, address)
+            # TODO:
 
+    async def _get_partial_txin(self, received_txid_hex: str, address: str) -> PartialTxInput:
+        received_tx = await self.get_transaction(received_txid_hex)
+        tx_mined_info = await self.get_tx_height(received_txid_hex)
+        if received_tx is None:
+            raise ChainMonitorRpcError(f"ChainMonitor: _get_partial_txin: Could not find transaction {received_txid_hex}")
+        # we search the index of the output of the funding tx spending to the funding address
+        for index, output in enumerate(received_tx.outputs):
+            if output.address == address:
+                break
+        else:  # this shouldn't happen
+            raise ChainMonitorRpcError(f"ChainMonitor: _get_partial_txin: "
+                                       f"Could not find output for address {address} in transaction {received_txid_hex}")
 
-    def remove_tx(self, txid_hex: str) -> None:
-        """Removes a transaction AND all its dependents/children
-            from the wallet history."""
+        future_prevout = TxOutpoint(txid=bytes.fromhex(received_txid_hex), out_idx=index)
+        is_coinbase = True if len(received_tx.inputs()) == 0 else False
+        # getting partialTxInput
+        utxo = PartialTxInput(prevout=future_prevout, is_coinbase_output=is_coinbase)
+        utxo._trusted_address = address
+        utxo._trusted_value_sats = output.value
+        utxo.block_height = tx_mined_info.height
+        utxo.block_txpos = None # we don't need this for swaps
+        # TODO: spent checking will happen in a separate function
+        utxo.spent_height = None
+        utxo.spent_txid = None
+        return utxo
+
+    async def update_spends_in_txin(self, txin: PartialTxInput) -> None:
         pass
+        # we check if the utxo exists in the utxoset
+
+
+    # def remove_tx(self, txid_hex: str) -> None:
+    #     """Removes a transaction AND all its dependents/children
+    #         from the wallet history."""
+    #     pass
 
 
 class ChainMonitorRpcError(Exception):
@@ -206,4 +252,7 @@ class ChainMonitorNotConnectedError(Exception):
     pass
 
 class WrongWalletLoadedError(Exception):
+    pass
+
+class UnknownAddressError(Exception):
     pass
