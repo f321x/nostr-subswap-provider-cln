@@ -257,10 +257,7 @@ def push_script(data: bytes) -> bytes:
     ported from https://github.com/btcsuite/btcd/blob/fdc2bc867bda6b351191b5872d2da8270df00d13/txscript/scriptbuilder.go#L128
     """
     data_len = len(data)
-str:
-    return hash_to_segwit_addr(sha256(script), witver=0, net=net)
 
-def
     # "small integer" opcodes
     if data_len == 0 or data_len == 1 and data[0] == 0:
         return bytes([opcodes.OP_0])
