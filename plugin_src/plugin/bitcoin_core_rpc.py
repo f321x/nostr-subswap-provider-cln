@@ -180,12 +180,12 @@ class BitcoinCoreRPC:
 
         for utxo in utxos:
             funding_inputs.append(await self._utxo_to_partial_txin(utxo))
-        unspent_amount_sat = sum([utxo._trusted_value_sats for utxo in funding_inputs])
+        unspent_amount_sat = sum([utxo.value_sats() for utxo in funding_inputs])
         spent_amount = int(float(received[0]['amount']) * 10**8) - unspent_amount_sat
         if spent_amount > 0:  # nothing received to the address has been spent yet
             # at least some utxos have been spent again already, so we have to fetch the spending txs
             spent_utxos = await self._fetch_spent_utxos(received_txids, spent_amount, address)
-            if spent_amount - sum([utxo._trusted_value_sats for utxo in spent_utxos]) > 0:
+            if spent_amount - sum([utxo.value_sats() for utxo in spent_utxos]) > 0:
                 raise UtxosNotFoundError(f"ChainMonitor: get_addr_outputs: "
                                            f"Could not find all spent utxos for {address}")
         return funding_inputs
