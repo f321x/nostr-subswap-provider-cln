@@ -1,5 +1,4 @@
 import asyncio
-import sys
 from typing import Optional
 
 from .cln_logger import PluginLogger
