@@ -9,6 +9,7 @@ from .cln_plugin import CLNPlugin
 from .lnutil import hex_to_bytes, bytes_to_hex
 from .json_db import StoredObject
 from .cln_logger import PluginLogger
+import constants
 from .constants import AbstractNet, BitcoinMainnet, BitcoinTestnet, BitcoinSignet, BitcoinRegtest
 from .bitcoin_core_rpc import BitcoinRPCCredentials
 
@@ -34,6 +35,7 @@ class PluginConfig:
         config = PluginConfig(nostr_secret=cln_plugin_handler.derive_secret("NOSTRSECRET"),
                             cln_configuration=cln_plugin_handler.fetch_cln_configuration(),
                             logger=logger)
+        constants.net = config.network
         if relays := os.getenv("NOSTR_RELAYS"):
             config.nostr_relays.extend(Relay(url=url.strip()) for url in relays.split(","))
         else:
