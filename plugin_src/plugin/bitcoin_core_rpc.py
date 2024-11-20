@@ -1,61 +1,18 @@
 import attr
 from bitcoinrpc import BitcoinRPC, RPCError as BitcoinRPCError
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from httpx import Timeout as HttpxTimeout
+import json
 import asyncio
 import time
 
 from .cln_logger import PluginLogger
-from .transaction import Transaction, TxOutpoint, PartialTxInput
+from .transaction import Transaction, PartialTxInput, TxOutpoint
 from .utils import TxMinedInfo
-
-@attr.s(frozen=True, auto_attribs=True, kw_only=True)
-class BitcoinRPCCredentials:
-    """Credentials for Bitcoin Core RPC."""
-    host: str
-    port: int
-    user: str
-    password: str
-    datadir: Optional[str] = None
-    timeout: int = attr.ib(default=60, validator=attr.validators.instance_of(int))
-
-    @classmethod
-    def from_cln_config_dict(cls, cln_config: dict) -> "BitcoinRPCCredentials":
-        """Load the credentials from the cln config dict fetched with lightning-listconfigs"""
-        return cls(
-            host=cln_config["bitcoin-rpcconnect"]["value_str"],
-            port=cln_config["bitcoin-rpcport"]["value_int"],
-            user=cln_config["bitcoin-rpcuser"]["value_str"],
-            password=cln_config["bitcoin-rpcpassword"]["value_str"],
-            datadir=cln_config.get("bitcoin-datadir", {}).get("value_str"),
-            timeout=cln_config.get("bitcoin-rpcclienttimeout", {}).get("value_int", 60)
-        )
-
-    def __str__(self) -> str:
-        """Return a string representation of the credentials for pretty debugging"""
-        components = [
-            f"Bitcoin RPC Credentials:",
-            f"  URL: {self.url}",
-            f"  User: {self.user}",
-            f"  Password: {self.password}",
-        ]
-        if self.datadir:
-            components.append(f"  Data Directory: {self.datadir}")
-        components.append(f"  Timeout: {self.timeout}s")
-        return '\n'.join(components)
-
-    @property
-    def url(self) -> str:
-        return f"http://{self.host}:{self.port}"
-
-    @property
-    def auth(self) -> Tuple[str, str]:
-        """Auth format required for bitcoinrpc lib"""
-        return self.user, self.password
 
 class BitcoinCoreRPC:
     def __init__(self, logger: PluginLogger,
-                        bcore_rpc_credentials: BitcoinRPCCredentials = None):
+                        bcore_rpc_credentials: 'BitcoinRPCCredentials' = None):
         self.iface = BitcoinRPC.from_config(url=bcore_rpc_credentials.url,
                                             auth=bcore_rpc_credentials.auth)
         self._logger = logger
@@ -149,7 +106,7 @@ class BitcoinCoreRPC:
         timestamp = int(time.time())
         try:
             await self.iface.acall(method="importaddress",
-                                   params=[address, f"swapplugin({timestamp})", False, False],
+                                   params=[address, f"swapplugin", False, False],
                                    timeout=HttpxTimeout(5))
         except BitcoinRPCError as e:
             if e.error["code"] == -4:
@@ -199,6 +156,140 @@ class BitcoinCoreRPC:
         except Exception as e:
             raise BitcoinCoreRPCError(f"ChainMonitor get_local_height: Could not get blockcount: {e}")
 
+    async def get_addr_outputs(self, address: str) -> List[PartialTxInput]:
+        """Getting utxos for the address in form of a PartialTxInput. The utxo will be marked spent
+        if it has already been spent again"""
+        funding_inputs: List[PartialTxInput] = []
+
+        # get all transactions that spent to the address
+        try:  # minconf, include_empty, include_watchonly, address_filter, include_immature_cb
+            received = json.loads(await self.iface.acall(method="listreceivedbyaddress",
+                                              params=[1, True, True, address, False]))
+            utxos = json.loads(await self.iface.acall(method="listunspent",
+                                           params=[1, 9999999, [address]]))
+        except Exception as e:
+            raise BitcoinCoreRPCError(f"ChainMonitor: get_addr_outputs call for {address} failed: {e}")
+        if len(received) == 0:
+            raise UnknownAddressError(f"ChainMonitor: get_addr_outputs: Address {address} hasn't been imported before")
+
+        received_txids = received[0]['txids']  # all txids of transactions that spent to 'address'
+        if len(received_txids) == 0:  # no txids, no utxos
+            self._logger.debug(f"ChainMonitor: get_addr_outputs: Address {address} has no received txids")
+            return funding_inputs
+
+        for utxo in utxos:
+            funding_inputs.append(await self._utxo_to_partial_txin(utxo))
+        unspent_amount_sat = sum([utxo._trusted_value_sats for utxo in funding_inputs])
+        spent_amount = int(float(received[0]['amount']) * 10**8) - unspent_amount_sat
+        if spent_amount > 0:  # nothing received to the address has been spent yet
+            # at least some utxos have been spent again already, so we have to fetch the spending txs
+            spent_utxos = await self._fetch_spent_utxos(received_txids, spent_amount)
+
+        return funding_inputs
+
+    async def _utxo_to_partial_txin(self, rpc_utxo: dict) -> PartialTxInput:
+        """Convert a utxo dict to a PartialTxInput object"""
+        future_prevout = TxOutpoint(txid=bytes.fromhex(rpc_utxo['txid']), out_idx=rpc_utxo['vout'])
+        utxo = PartialTxInput(prevout=future_prevout, is_coinbase_output=False)  # rpc call doesn't return coinbase outputs
+        utxo._trusted_address = rpc_utxo['address']
+        utxo._trusted_value_sats = int(rpc_utxo['amount'] * 10**8)
+        utxo.block_height = await self.get_tx_height(rpc_utxo['txid'])
+        utxo.block_txpos = None  # we don't need this for swaps
+        utxo.spent_height = None # is not spent because it was returned by listunspent
+        utxo.spent_txid = None
+        return utxo
+
+    async def _fetch_spent_utxos(self, received_txids: List[str], spent_amount_sat: int) -> None:
+        fetch_txs = 1  # amount of transactions to fetch
+
+        # we look for the spending transactions and deduct the amount once found
+        while spent_amount_sat > 0:
+            try:
+                wallet_txs = json.loads(await self.iface.acall(method="listwallettransactions",
+                                                    params=["*", fetch_txs, fetch_txs - 1, True],
+                                                    timeout=HttpxTimeout(5)))
+            except Exception as e:
+                raise BitcoinCoreRPCError(f"ChainMonitor: _fetch_spent_utxos: Could not get wallet transactions: {e}")
+            fetch_txs += 1
+            if len(wallet_txs) == 0:  # no more txs to fetch
+                return None
+            wallet_send_tx = wallet_txs[0] if wallet_txs[0]["category"] == "send" else None
+            if not wallet_send_tx:  # fetched tx was no outgoing tx, ignoring it
+                continue
+            full_tx = await self.get_transaction(wallet_send_tx["txid"])
+            for input in full_tx.inputs():
+                if input.prevout.txid.hex() in received_txids:
+                #     spent_amount_sat -= input.prevout.value_sats
+                #     if spent_amount_sat <= 0:
+                #         return None
+                # send_tx
+                # {
+                #     "involvesWatchonly": true,
+                #     "address": "tb1qd28npep0s8frcm3y7dxqajkcy2m40eysplyr9v",
+                #     "category": "send",
+                #     "amount": -0.00009714,
+                #     "vout": 0,
+                #     "fee": -0.00000286,
+                #     "confirmations": 626,
+                #     "blockhash": "000002c469b8c5b18661b5bf8aacd5190370acde2ad0d91f654902effa5652bb",
+                #     "blockheight": 1617298,
+                #     "blockindex": 1,
+                #     "blocktime": 1732094921,
+                #     "txid": "20d8faa365e1a35a0a31f1887488c6409bd3d17c2c5a702b59e26d3dc44b7e8f",
+                #     "wtxid": "4a6dc8ea4079e3012a3b7f98ea262739c8b074889c2faa631bffd125e01da0dc",
+                #     "walletconflicts": [
+                #     ],
+                #     "time": 1732094921,
+                #     "timereceived": 1732094921,
+                #     "bip125-replaceable": "no",
+                #     "abandoned": false
+                # }
+
+
+@attr.s(frozen=True, auto_attribs=True, kw_only=True)
+class BitcoinRPCCredentials:
+    """Credentials for Bitcoin Core RPC."""
+    host: str
+    port: int
+    user: str
+    password: str
+    datadir: Optional[str] = None
+    timeout: int = attr.ib(default=60, validator=attr.validators.instance_of(int))
+
+    @classmethod
+    def from_cln_config_dict(cls, cln_config: dict) -> "BitcoinRPCCredentials":
+        """Load the credentials from the cln config dict fetched with lightning-listconfigs"""
+        return cls(
+            host=cln_config["bitcoin-rpcconnect"]["value_str"],
+            port=cln_config["bitcoin-rpcport"]["value_int"],
+            user=cln_config["bitcoin-rpcuser"]["value_str"],
+            password=cln_config["bitcoin-rpcpassword"]["value_str"],
+            datadir=cln_config.get("bitcoin-datadir", {}).get("value_str"),
+            timeout=cln_config.get("bitcoin-rpcclienttimeout", {}).get("value_int", 60)
+        )
+
+    def __str__(self) -> str:
+        """Return a string representation of the credentials for pretty debugging"""
+        components = [
+            f"Bitcoin RPC Credentials:",
+            f"  URL: {self.url}",
+            f"  User: {self.user}",
+            f"  Password: {self.password}",
+        ]
+        if self.datadir:
+            components.append(f"  Data Directory: {self.datadir}")
+        components.append(f"  Timeout: {self.timeout}s")
+        return '\n'.join(components)
+
+    @property
+    def url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+    @property
+    def auth(self) -> Tuple[str, str]:
+        """Auth format required for bitcoinrpc lib"""
+        return self.user, self.password
+
 
 class BitcoinCoreRPCError(Exception):
     pass
@@ -207,4 +298,7 @@ class WrongWalletLoadedError(Exception):
     pass
 
 class BitcoinCoreNotConnectedError(Exception):
+    pass
+
+class UnknownAddressError(Exception):
     pass
