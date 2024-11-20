@@ -14,7 +14,7 @@ from .transaction import PartialTxOutput, PartialTransaction, Transaction, TxOut
 from .utils import OldTaskGroup, now
 from .bitcoin import DummyAddress
 from .crypto import ripemd
-from .lnutil import hex_to_bytes
+from .lnutil import hex_to_bytes, REDEEM_AFTER_DOUBLE_SPENT_DELAY
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants, lnutil
 from .constants import (MIN_LOCKTIME_DELTA, LOCKTIME_DELTA_REFUND, MAX_LOCKTIME_DELTA,
@@ -309,30 +309,32 @@ class SwapManager:
             funding_height = self.lnwatcher.get_tx_height(txin.prevout.txid.hex())
             spent_height = txin.spent_height
             should_bump_fee = False
-            # if spent_height is not None:
-            #     swap.spending_txid = txin.spent_txid
-            #     if spent_height > 0:
-            #         if current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
-            #             self.logger.info(f'stop watching swap {swap.lockup_address}')
-            #             self.lnwatcher.remove_callback(swap.lockup_address)
-            #             swap.is_redeemed = True
-            #     elif spent_height == TX_HEIGHT_LOCAL:
-            #         if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
-            #             tx = self.lnwatcher.adb.get_transaction(txin.spent_txid)
-            #             try:
-            #                 await self.network.broadcast_transaction(tx)
-            #             except TxBroadcastError:
-            #                 self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
-            #         elif funding_height.height == TX_HEIGHT_LOCAL:
-            #             # the funding tx was double spent.
-            #             # this will remove both funding and child (spending tx) from adb
-            #             self.lnwatcher.adb.remove_transaction(swap.funding_txid)
-            #             swap.funding_txid = None
-            #             swap.spending_txid = None
-            #     else:
-            #         # spending tx is in mempool
-            #         pass
-            #
+            if spent_height is not None:
+                swap.spending_txid = txin.spent_txid
+                if spent_height > 0:
+                    if current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
+                        self.logger.info(f'stop watching swap {swap.lockup_address}')
+                        self.lnwatcher.remove_callback(swap.lockup_address)
+                        swap.is_redeemed = True
+                elif spent_height == TX_HEIGHT_LOCAL:
+                    if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
+                        tx = self.lnwatcher.adb.get_transaction(txin.spent_txid)
+                        try:
+                            await self.network.broadcast_transaction(tx)
+                        except TxBroadcastError:
+                            self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
+                    elif funding_height.height == TX_HEIGHT_LOCAL:
+                        # the funding tx was double spent.
+                        # this will remove both funding and child (spending tx) from adb
+                        self.lnwatcher.adb.remove_transaction(swap.funding_txid)
+                        swap.funding_txid = None
+                        swap.spending_txid = None
+                else:
+                    # spending tx is in mempool
+                    pass
+
+            TODO: blockheight in spend doesn't exist if 0 conf
+
             # if not swap.is_reverse:
             #     if swap.preimage is None and spent_height is not None:
             #         # extract the preimage, add it to lnwatcher
