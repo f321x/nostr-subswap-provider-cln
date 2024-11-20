@@ -6,6 +6,7 @@ import json
 import asyncio
 import time
 
+from .bitcoin import script_to_p2wsh
 from .cln_logger import PluginLogger
 from .transaction import Transaction, PartialTxInput, TxOutpoint
 from .utils import TxMinedInfo
@@ -183,24 +184,28 @@ class BitcoinCoreRPC:
         spent_amount = int(float(received[0]['amount']) * 10**8) - unspent_amount_sat
         if spent_amount > 0:  # nothing received to the address has been spent yet
             # at least some utxos have been spent again already, so we have to fetch the spending txs
-            spent_utxos = await self._fetch_spent_utxos(received_txids, spent_amount)
-
+            spent_utxos = await self._fetch_spent_utxos(received_txids, spent_amount, address)
+            if spent_amount - sum([utxo._trusted_value_sats for utxo in spent_utxos]) > 0:
+                raise UtxosNotFoundError(f"ChainMonitor: get_addr_outputs: "
+                                           f"Could not find all spent utxos for {address}")
         return funding_inputs
 
-    async def _utxo_to_partial_txin(self, rpc_utxo: dict) -> PartialTxInput:
+    async def _utxo_to_partial_txin(self, utxo: dict) -> PartialTxInput:
         """Convert a utxo dict to a PartialTxInput object"""
-        future_prevout = TxOutpoint(txid=bytes.fromhex(rpc_utxo['txid']), out_idx=rpc_utxo['vout'])
-        utxo = PartialTxInput(prevout=future_prevout, is_coinbase_output=False)  # rpc call doesn't return coinbase outputs
-        utxo._trusted_address = rpc_utxo['address']
-        utxo._trusted_value_sats = int(rpc_utxo['amount'] * 10**8)
-        utxo.block_height = await self.get_tx_height(rpc_utxo['txid'])
-        utxo.block_txpos = None  # we don't need this for swaps
-        utxo.spent_height = None # is not spent because it was returned by listunspent
-        utxo.spent_txid = None
-        return utxo
+        future_prevout = TxOutpoint(txid=bytes.fromhex(utxo['txid']), out_idx=utxo['vout'])
+        part_txin = PartialTxInput(prevout=future_prevout, is_coinbase_output=False)  # rpc call doesn't return coinbase outputs
+        part_txin._trusted_address = utxo['address']
+        part_txin._trusted_value_sats = int(utxo['amount'] * 10**8)
+        part_txin.block_height = await self.get_tx_height(utxo['txid'])
+        part_txin.block_txpos = utxo.get('blockindex', None)
+        part_txin.spent_height = utxo.get('spent_height', None)
+        part_txin.spent_txid = utxo.get('spent_txid', None)
+        return part_txin
 
-    async def _fetch_spent_utxos(self, received_txids: List[str], spent_amount_sat: int) -> None:
+    async def _fetch_spent_utxos(self, received_txids: List[str], spent_amount_sat: int,
+                                 locking_addr: str) -> List[PartialTxInput]:
         fetch_txs = 1  # amount of transactions to fetch
+        spent_utxos = []
 
         # we look for the spending transactions and deduct the amount once found
         while spent_amount_sat > 0:
@@ -212,38 +217,30 @@ class BitcoinCoreRPC:
                 raise BitcoinCoreRPCError(f"ChainMonitor: _fetch_spent_utxos: Could not get wallet transactions: {e}")
             fetch_txs += 1
             if len(wallet_txs) == 0:  # no more txs to fetch
-                return None
+                return spent_utxos
             wallet_send_tx = wallet_txs[0] if wallet_txs[0]["category"] == "send" else None
             if not wallet_send_tx:  # fetched tx was no outgoing tx, ignoring it
                 continue
-            full_tx = await self.get_transaction(wallet_send_tx["txid"])
-            for input in full_tx.inputs():
-                if input.prevout.txid.hex() in received_txids:
-                #     spent_amount_sat -= input.prevout.value_sats
-                #     if spent_amount_sat <= 0:
-                #         return None
-                # send_tx
-                # {
-                #     "involvesWatchonly": true,
-                #     "address": "tb1qd28npep0s8frcm3y7dxqajkcy2m40eysplyr9v",
-                #     "category": "send",
-                #     "amount": -0.00009714,
-                #     "vout": 0,
-                #     "fee": -0.00000286,
-                #     "confirmations": 626,
-                #     "blockhash": "000002c469b8c5b18661b5bf8aacd5190370acde2ad0d91f654902effa5652bb",
-                #     "blockheight": 1617298,
-                #     "blockindex": 1,
-                #     "blocktime": 1732094921,
-                #     "txid": "20d8faa365e1a35a0a31f1887488c6409bd3d17c2c5a702b59e26d3dc44b7e8f",
-                #     "wtxid": "4a6dc8ea4079e3012a3b7f98ea262739c8b074889c2faa631bffd125e01da0dc",
-                #     "walletconflicts": [
-                #     ],
-                #     "time": 1732094921,
-                #     "timereceived": 1732094921,
-                #     "bip125-replaceable": "no",
-                #     "abandoned": false
-                # }
+            full_spending_tx = await self.get_transaction(wallet_send_tx["txid"])
+            for txin in full_spending_tx.inputs():
+                if txin.prevout.txid.hex() in received_txids:
+                    # the spending tx is spending an output of a transaction that also spent to our address
+                    full_received_tx = await self.get_transaction(txin.prevout.txid.hex())  # tx we received to locking_addr
+                    # now we have to find if the spent prevout was locked to our address
+                    spent_output = full_received_tx.outputs()[txin.prevout.out_idx]
+                    if spent_output.address == locking_addr:
+                        # this is the utxo that has been spent again
+                        utxo = {
+                            "txid": txin.prevout.txid.hex(),
+                            "vout": txin.prevout.out_idx,
+                            "address": locking_addr,
+                            "amount": spent_output.value,
+                            "spent_height": wallet_send_tx["blockheight"],
+                            "spent_txid": wallet_send_tx["txid"]
+                        }
+                        spent_utxos.append(await self._utxo_to_partial_txin(utxo))
+                        spent_amount_sat -= spent_output.value
+        return spent_utxos
 
 
 @attr.s(frozen=True, auto_attribs=True, kw_only=True)
@@ -301,4 +298,7 @@ class BitcoinCoreNotConnectedError(Exception):
     pass
 
 class UnknownAddressError(Exception):
+    pass
+
+class UtxosNotFoundError(Exception):
     pass

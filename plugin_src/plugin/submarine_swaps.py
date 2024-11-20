@@ -66,11 +66,12 @@ WITNESS_TEMPLATE_REVERSE_SWAP = [
 #     locktime: int,
 #     refund_pubkey: bytes = None,
 #     claim_pubkey: bytes = None,
+#     network: AbstractNetwork
 # ) -> None:
 #     parsed_script = [x for x in script_GetOp(redeem_script)]
 #     if not match_script_against_template(redeem_script, WITNESS_TEMPLATE_REVERSE_SWAP):
 #         raise Exception("rswap check failed: scriptcode does not match template")
-#     if script_to_p2wsh(redeem_script) != lockup_address:
+#     if script_to_p2wsh(redeem_script, net=network) != lockup_address:
 #         raise Exception("rswap check failed: inconsistent scriptcode and address")
 #     if ripemd(payment_hash) != parsed_script[5][1]:
 #         raise Exception("rswap check failed: our preimage not in script")
@@ -506,7 +507,7 @@ class SwapManager:
             prepay_invoice = None
             prepay_hash = None
 
-        lockup_address = script_to_p2wsh(redeem_script)
+        lockup_address = script_to_p2wsh(redeem_script, net=self.config.network)
         receive_address = self.wallet.get_receiving_address()
         swap = SwapData(
             redeem_script=redeem_script,
@@ -565,7 +566,7 @@ class SwapManager:
 #         payment_hash: bytes,
 #         prepay_hash: Optional[bytes] = None,
 #     ) -> SwapData:
-#         lockup_address = script_to_p2wsh(redeem_script)
+#         lockup_address = script_to_p2wsh(redeem_script, net=self.config.network)
 #         receive_address = await self.wallet.get_receiving_address()
 #         swap = SwapData(
 #             redeem_script = redeem_script,
@@ -673,6 +674,7 @@ class SwapManager:
 #             payment_hash=payment_hash,
 #             locktime=locktime,
 #             refund_pubkey=refund_pubkey,
+#             net=self.config.network
 #         )
 #
 #         # check that onchain_amount is not more than what we estimated
