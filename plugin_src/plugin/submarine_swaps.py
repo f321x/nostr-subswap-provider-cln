@@ -11,7 +11,7 @@ from electrum_aionostr.util import to_nip19
 from collections import defaultdict
 
 from .bitcoin import opcodes, dust_threshold, construct_script, script_to_p2wsh, construct_witness
-from .transaction import (PartialTxOutput, PartialTransaction, Transaction, TxOutpoint,
+from .transaction import (PartialTxOutput, PartialTransaction, TxOutpoint,
                           OPPushDataGeneric, OPPushDataPubkey, PartialTxInput)
 from .utils import OldTaskGroup, now, BelowDustLimit, TxBroadcastError
 from .bitcoin import DummyAddress
