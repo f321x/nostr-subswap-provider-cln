@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sys
 import time
 import traceback
 from datetime import datetime
@@ -14,11 +13,11 @@ from .cln_plugin import CLNPlugin
 from .crypto import sha256
 from .invoices import PR_UNPAID, PR_PAID, Invoice, LN_EXPIRY_NEVER
 from .json_db import JsonDB
-from .plugin_config import PluginConfig, Keypair
+from .plugin_config import PluginConfig
 from .constants import MIN_FINAL_CLTV_DELTA_FOR_CLIENT
 from .utils import call_blocking_with_timeout, ShortID
 from .lnutil import LnFeatures, filter_suitable_recv_chans
-from .invoices import HoldInvoice, DuplicateInvoiceCreationError, Htlc, HtlcState, InvoiceState
+from .invoices import HoldInvoice, DuplicateInvoiceCreationError, Htlc, InvoiceState
 from .lnaddr import LnAddr, lnencode_unsigned
 from .bitcoin import COIN
 
@@ -29,21 +28,16 @@ class PaymentInfo(NamedTuple):
     direction: int
     status: int
 
+
 class Direction(IntEnum):
     SENT = -1     # in the context of HTLCs: "offered" HTLCs
     RECEIVED = 1  # in the context of HTLCs: "received" HTLCs
+
 
 SAVED_PR_STATUS = [PR_PAID, PR_UNPAID] # status that are persisted
 SENT = Direction.SENT
 RECEIVED = Direction.RECEIVED
 
-# def ensure_db_write(func):
-#     def wrapper(self, *args, **kwargs):
-#         try:
-#             return func(self, *args, **kwargs)
-#         finally:
-#             self._db.write()
-#     return wrapper
 
 class CLNLightning:
     INBOUND_LIQUIDITY_FACTOR = 0.9  # Buffer factor for inbound liquidity calculation (use only 90% of inbound capacity)
@@ -214,16 +208,6 @@ class CLNLightning:
                            f"value: {htlc.amount_msat}")
         return True
 
-
-    # def _handle_existing_invoice(self, target_invoice: HoldInvoice, htlc: Htlc, request):
-    #     match htlc.state:
-    #         case HtlcState.Accepted:
-    #            pass
-    #         case HtlcState.Settled:
-    #             pass
-    #         case HtlcState.Cancelled:
-    #             pass
-
     async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
         try:  # first check if payment was already initiated earlier
             existing_pay_req = self._rpc.listpays(bolt11=bolt11)
@@ -249,13 +233,13 @@ class CLNLightning:
         payment_preimage = os.urandom(32)
         payment_hash = sha256(payment_preimage)
         info = PaymentInfo(payment_hash, amount_msat, RECEIVED, PR_UNPAID)
-        self._save_preimage(payment_hash, payment_preimage, write_to_disk=False)
+        self.save_preimage(payment_hash, payment_preimage, write_to_disk=False)
         self._save_payment_info(info, write_to_disk=False)
         if write_to_disk:
             self._db.write()
         return payment_hash
 
-    def _save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
+    def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
         if sha256(preimage) != payment_hash:
             raise InvalidPreimageSavedError("tried to save incorrect preimage for payment_hash")
         self._preimages[payment_hash.hex()] = preimage.hex()
@@ -356,9 +340,6 @@ class CLNLightning:
             return
         self._db.write()
 
-    # def save_forwarding_failure(self, payment_key_hex: str, failure_msg: str):
-    #     pass
-
     def b11invoice_from_hash(self, *,
             payment_hash: bytes,
             amount_msat: int,
@@ -438,9 +419,6 @@ class CLNLightning:
         assert len(payment_hash) == 32, f"_get_payment_secret: payment_hash must be 32 bytes, was {len(payment_hash)}"
         return sha256(sha256(self._payment_secret_key) + payment_hash)
 
-    # def add_payment_info_for_hold_invoice(self, payment_hash: bytes, amount_msat: int):
-    #     pass
-
     def bundle_payments(self, *, swap_invoice: HoldInvoice, prepay_invoice: HoldInvoice) -> None:
         current_invoice = self.get_hold_invoice(swap_invoice.payment_hash)
         # remove the old invoice so changes are tracked by the JsonDB StoredDict
@@ -473,7 +451,6 @@ class CLNLightning:
             if channel["connected"]:
                 inbound_capacity_sat += (channel["amount_msat"] - channel["our_amount_msat"]) / 1000
         return int(inbound_capacity_sat * self.INBOUND_LIQUIDITY_FACTOR)
-
 
 
 class InvalidInvoiceCreationError(Exception):

@@ -1,11 +1,11 @@
 import math
-from collections.abc import Callable
 from typing import Optional
 from pyln.client import RpcError, LightningRpc
+
 from .cln_logger import PluginLogger
 from .plugin_config import PluginConfig
-from .transaction import PartialTxOutput, PartialTransaction, Transaction
-
+from .transaction import PartialTxOutput, PartialTransaction
+from .utils import TxBroadcastError
 
 class CLNChainWallet:
     def __init__(self, *, plugin_rpc: LightningRpc, config: PluginConfig, logger: PluginLogger):
@@ -103,5 +103,3 @@ class CLNChainWallet:
         return address
 
 
-class TxBroadcastError(Exception):
-    pass
