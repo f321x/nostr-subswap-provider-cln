@@ -9,7 +9,7 @@ from .cln_plugin import CLNPlugin
 from .lnutil import hex_to_bytes, bytes_to_hex
 from .json_db import StoredObject
 from .cln_logger import PluginLogger
-import constants
+from . import constants
 from .constants import AbstractNet, BitcoinMainnet, BitcoinTestnet, BitcoinSignet, BitcoinRegtest
 from .bitcoin_core_rpc import BitcoinRPCCredentials
 

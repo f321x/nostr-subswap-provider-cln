@@ -6,7 +6,6 @@ import json
 import asyncio
 import time
 
-from .bitcoin import script_to_p2wsh
 from .cln_logger import PluginLogger
 from .transaction import Transaction, PartialTxInput, TxOutpoint
 from .utils import TxMinedInfo
@@ -235,7 +234,7 @@ class BitcoinCoreRPC:
                             "vout": txin.prevout.out_idx,
                             "address": locking_addr,
                             "amount": spent_output.value,
-                            "spent_height": wallet_send_tx["blockheight"],
+                            "spent_height": wallet_send_tx.get("blockheight", None),
                             "spent_txid": wallet_send_tx["txid"]
                         }
                         spent_utxos.append(await self._utxo_to_partial_txin(utxo))

@@ -137,6 +137,8 @@ def parse_max_spend(amt: Any) -> Optional[int]:
 class BelowDustLimit(Exception):
     pass
 
+class TxBroadcastError(Exception):
+    pass
 
 class InvalidPassword(Exception):
     def __init__(self, message: Optional[str] = None):
