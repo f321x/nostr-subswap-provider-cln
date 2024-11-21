@@ -847,25 +847,3 @@ def ecdsa_sign_usermessage(ec_privkey, message: Union[bytes, str], *, is_compres
     message = to_bytes(message, 'utf8')
     msg32 = sha256d(usermessage_magic(message))
     return ec_privkey.ecdsa_sign_recoverable(msg32, is_compressed=is_compressed)
-
-# def verify_usermessage_with_address(address: str, sig65: bytes, message: bytes, *, net=None) -> bool:
-#     from electrum_ecc import ECPubkey
-#     assert_bytes(sig65, message)
-#     if net is None: net = constants.net
-#     h = sha256d(usermessage_magic(message))
-#     try:
-#         public_key, compressed, txin_type_guess = ECPubkey.from_ecdsa_sig65(sig65, h)
-#     except Exception as e:
-#         return False
-#     # check public key using the address
-#     pubkey_hex = public_key.get_public_key_hex(compressed)
-#     txin_types = (txin_type_guess,) if txin_type_guess else ('p2pkh', 'p2wpkh', 'p2wpkh-p2sh')
-#     for txin_type in txin_types:
-#         addr = pubkey_to_address(txin_type, pubkey_hex, net=net)
-#         if address == addr:
-#             break
-#     else:
-#         return False
-#     # check message
-#     # note: `$ bitcoin-cli verifymessage` does NOT enforce the low-S rule for ecdsa sigs
-#     return public_key.ecdsa_verify(sig65[1:], h, enforce_low_s=False)

@@ -1,4 +1,3 @@
-#! /usr/bin/env python3
 # This was forked from https://github.com/rustyrussell/lightning-payencode/tree/acc16ec13a3fa1dc16c07af6ec67c261bd8aff23
 
 import io
@@ -11,7 +10,6 @@ from binascii import hexlify
 from decimal import Decimal
 from typing import Optional, Type, Dict, Any, Sequence, Tuple
 import random
-
 import electrum_ecc as ecc
 
 from .bitcoin import hash160_to_b58_address, b58_address_to_hash160, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
@@ -19,9 +17,6 @@ from .segwit_addr import bech32_encode, bech32_decode, CHARSET, CHARSET_INVERSE,
 from . import constants, segwit_addr
 from .constants import AbstractNet
 from .bitcoin import COIN
-
-# if TYPE_CHECKING:
-#     from .lnutil import LnFeatures
 
 
 class LnInvoiceException(Exception): pass
