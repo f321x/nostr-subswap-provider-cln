@@ -1,9 +1,9 @@
+import attr
+from attr import field
 import time
 from typing import List, Optional, Union, Dict, Any, Sequence, Set, Callable
 import enum
-from attrs import field
 from typing import Set, Callable
-import attr
 
 from .crypto import sha256
 from .json_db import StoredObject, stored_in
