@@ -37,10 +37,8 @@ from enum import IntEnum
 import itertools
 import binascii
 import copy
-
 import electrum_ecc as ecc
 
-# import bitcoin
 from . import bip32, bitcoin
 from .bip32 import BIP32Node
 from .utils import to_bytes, bfh, chunks, is_hex_str, parse_max_spend, ShortID, OldTaskGroup
@@ -54,10 +52,6 @@ from .crypto import sha256d, sha256
 from .descriptor import Descriptor, MissingSolutionPiece, create_dummy_descriptor_from_address
 from .globals import get_plugin_logger
 
-# if TYPE_CHECKING:
-#     from .wallet import Abstract_Wallet
-#     from .network import Network
-#     from .simple_config import SimpleConfig
 
 _logger = get_plugin_logger()
 DEBUG_PSBT_PARSING = False
@@ -437,35 +431,6 @@ class TxInput:
         if self.witness not in (b'\x00', b'', None):
             return True
         return False
-
-    # async def add_info_from_network(
-    #         self,
-    #         network: Optional['Network'],
-    #         *,
-    #         ignore_network_issues: bool = True,
-    #         timeout=None,
-    # ) -> bool:
-    #     """Returns True iff successful."""
-    #     from .network import NetworkException
-    #     async def fetch_from_network(txid) -> Optional[Transaction]:
-    #         tx = None
-    #         if network and network.has_internet_connection():
-    #             try:
-    #                 raw_tx = await network.get_transaction(txid, timeout=timeout)
-    #             except NetworkException as e:
-    #                 _logger.info(f'got network error getting input txn. err: {repr(e)}. txid: {txid}. '
-    #                              f'if you are intentionally offline, consider using the --offline flag')
-    #                 if not ignore_network_issues:
-    #                     raise e
-    #             else:
-    #                 tx = Transaction(raw_tx)
-    #         if not tx and not ignore_network_issues:
-    #             raise NetworkException('failed to get prev tx from network')
-    #         return tx
-    #
-    #     if self.utxo is None:
-    #         self.utxo = await fetch_from_network(txid=self.prevout.txid.hex())
-    #     return self.utxo is not None
 
 
 class BCDataStream(object):
@@ -1109,25 +1074,6 @@ class Transaction:
 
     def is_missing_info_from_network(self) -> bool:
         return any(txin.utxo is None for txin in self.inputs())
-
-    # def add_info_from_wallet_and_network(
-    #     self, *, wallet: 'Abstract_Wallet', show_error: Callable[[str], None],
-    # ) -> bool:
-    #     """Returns whether successful.
-    #     note: This is sort of a legacy hack... doing network requests in non-async code.
-    #           Relatedly, this should *not* be called from the network thread.
-    #     """
-    #     # note side-effect: tx is being mutated
-    #     from .network import NetworkException, Network
-    #     self.add_info_from_wallet(wallet)
-    #     try:
-    #         if self.is_missing_info_from_network():
-    #             Network.run_from_another_thread(
-    #                 self.add_info_from_network(wallet.network, ignore_network_issues=False))
-    #     except NetworkException as e:
-    #         show_error(repr(e))
-    #         return False
-    #     return True
 
     def is_rbf_enabled(self) -> bool:
         """Whether the tx explicitly signals BIP-0125 replace-by-fee."""
@@ -2395,39 +2341,6 @@ class PartialTransaction(Transaction):
         txin.witness = None
         self.invalidate_ser_cache()
 
-    # def add_info_from_wallet(
-    #         self,
-    #         wallet: 'Abstract_Wallet',
-    #         *,
-    #         include_xpubs: bool = False,
-    # ) -> None:
-    #     if self.is_complete():
-    #         return
-    #     # only include xpubs for multisig wallets; currently only they need it in practice
-    #     # note: coldcard fw have a limitation that if they are included then all
-    #     #       inputs are assumed to be multisig... https://github.com/spesmilo/electrum/pull/5440#issuecomment-549504761
-    #     # note: trezor plugin needs xpubs included, if there are multisig inputs/change_outputs
-    #     from .wallet import Multisig_Wallet
-    #     if include_xpubs and isinstance(wallet, Multisig_Wallet):
-    #         from .keystore import Xpub
-    #         for ks in wallet.get_keystores():
-    #             if isinstance(ks, Xpub):
-    #                 fp_bytes, der_full = ks.get_fp_and_derivation_to_be_used_in_partial_tx(
-    #                     der_suffix=[], only_der_suffix=False)
-    #                 xpub = ks.get_xpub_to_be_used_in_partial_tx(only_der_suffix=False)
-    #                 bip32node = BIP32Node.from_xkey(xpub)
-    #                 self.xpubs[bip32node] = (fp_bytes, der_full)
-    #     for txin in self.inputs():
-    #         wallet.add_input_info(
-    #             txin,
-    #             only_der_suffix=False,
-    #         )
-    #     for txout in self.outputs():
-    #         wallet.add_output_info(
-    #             txout,
-    #             only_der_suffix=False,
-    #         )
-
     def remove_xpubs_and_bip32_paths(self) -> None:
         self.xpubs.clear()
         for txin in self.inputs():
@@ -2449,18 +2362,6 @@ class PartialTransaction(Transaction):
             txout.witness_script = None
             txout.bip32_paths.clear()
             txout._unknown.clear()
-
-    # async def prepare_for_export_for_hardware_device(self, wallet: 'Abstract_Wallet') -> None:
-    #     self.add_info_from_wallet(wallet, include_xpubs=True)
-    #     await self.add_info_from_network(wallet.network)
-    #     # log warning if PSBT_*_BIP32_DERIVATION fields cannot be filled with full path due to missing info
-    #     from .keystore import Xpub
-    #     def is_ks_missing_info(ks):
-    #         return (isinstance(ks, Xpub) and (ks.get_root_fingerprint() is None
-    #                                           or ks.get_derivation_prefix() is None))
-    #     if any([is_ks_missing_info(ks) for ks in wallet.get_keystores()]):
-    #         _logger.warning('PSBT was requested to be filled with full bip32 paths but '
-    #                         'some keystores lacked either the derivation prefix or the root fingerprint')
 
     def convert_all_utxos_to_witness_utxos(self) -> None:
         """Replaces all NON-WITNESS-UTXOs with WITNESS-UTXOs.

@@ -571,9 +571,6 @@ class SwapManager:
             )
         else:
             raise NotImplementedError
-            # tx.replace_output_address(DummyAddress.SWAP, swap.lockup_address)
-            # tx.set_rbf(True)
-            # self.wallet.sign_transaction(tx, password)
         return tx
 
 #     @log_exceptions

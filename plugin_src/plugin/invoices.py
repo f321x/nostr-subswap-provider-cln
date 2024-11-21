@@ -1,28 +1,19 @@
 import time
-from datetime import datetime, timezone
 from typing import List, Optional, Union, Dict, Any, Sequence, Set, Callable
-
 import enum
 from attrs import field
 from typing import Set, Callable
-from .crypto import sha256
 import attr
 
+from .crypto import sha256
 from .json_db import StoredObject, stored_in
 from .lnutil import hex_to_bytes
-# from .i18n import _
 from .utils import age, InvoiceError, format_satoshis
-# from .bip21 import create_bip21_uri
-# from .lnutil import hex_to_bytes
 from .lnaddr import lndecode, LnAddr
 from .bitcoin import COIN, TOTAL_COIN_SUPPLY_LIMIT_IN_BTC
 from .transaction import PartialTxOutput
 from .crypto import sha256d
 
-# if TYPE_CHECKING:
-#     from .paymentrequest import PaymentRequest
-
-# convention: 'invoices' = outgoing , 'request' = incoming
 
 # status of payment requests
 PR_UNPAID   = 0     # if onchain: invoice amt not reached by txs in mempool+chain. if LN: invoice not paid.
@@ -311,7 +302,7 @@ class InsufficientFundedInvoiceError(Exception):
     pass
 
 @attr.s
-class BaseInvoice:
+class BaseInvoice(StoredObject):
     """
     Base class for Invoice and Request
     In the code, we use 'invoice' for outgoing payments, and 'request' for incoming payments.
@@ -532,49 +523,6 @@ class Invoice(BaseInvoice):
         d = self.to_json()
         d["lnaddr"] = self._lnaddr.to_debug_json()
         return d
-
-#
-# @stored_in('payment_requests')
-# @attr.s
-# class Request(BaseInvoice):
-#     payment_hash = attr.ib(type=bytes, kw_only=True, converter=hex_to_bytes)  # type: Optional[bytes]
-#
-#     def is_lightning(self):
-#         return self.payment_hash is not None
-#
-#     def get_address(self) -> Optional[str]:
-#         address = None
-#         if self.outputs:
-#             address = self.outputs[0].address if len(self.outputs) > 0 else None
-#         return address
-#
-#     @property
-#     def rhash(self) -> str:
-#         assert self.is_lightning()
-#         return self.payment_hash.hex()
-#
-#     def get_bip21_URI(
-#         self,
-#         *,
-#         lightning_invoice: Optional[str] = None,
-#     ) -> Optional[str]:
-#         addr = self.get_address()
-#         amount = self.get_amount_sat()
-#         if amount is not None:
-#             amount = int(amount)
-#         message = self.message
-#         extra = {}
-#         if self.time and self.exp:
-#             extra['time'] = str(int(self.time))
-#             extra['exp'] = str(int(self.exp))
-#         if lightning_invoice:
-#             extra['lightning'] = lightning_invoice
-#         if not addr and lightning_invoice:
-#             return "bitcoin:?lightning="+lightning_invoice
-#         if not addr and not lightning_invoice:
-#             return None
-#         uri = create_bip21_uri(addr, amount, message, extra_query_params=extra)
-#         return str(uri)
 
 
 def get_id_from_onchain_outputs(outputs: Sequence[PartialTxOutput], *, timestamp: int) -> str:
