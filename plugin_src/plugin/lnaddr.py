@@ -1,9 +1,7 @@
 # This was forked from https://github.com/rustyrussell/lightning-payencode/tree/acc16ec13a3fa1dc16c07af6ec67c261bd8aff23
 
 import io
-import os
 import re
-import sys
 import time
 from hashlib import sha256
 from binascii import hexlify
