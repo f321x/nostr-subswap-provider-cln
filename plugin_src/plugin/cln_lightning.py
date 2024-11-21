@@ -265,13 +265,13 @@ class CLNLightning:
             return
         self._db.write()
 
-    # def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
-    #     key = invoice.get_id()
-    #     if not invoice.is_lightning():
-    #         raise NotImplementedError("save_invoice: only lightning invoices are supported")
-    #     self._invoices[key] = invoice
-    #     if write_to_disk:
-    #         self._db.write()
+    def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
+        key = invoice.get_id()
+        if not invoice.is_lightning():
+            raise NotImplementedError("save_invoice: only lightning invoices are supported")
+        self._invoices[key] = invoice
+        if write_to_disk:
+            self._db.write()
 
     def get_invoice(self, key: str) -> Optional[Invoice]:
         return self._invoices.get(key)
