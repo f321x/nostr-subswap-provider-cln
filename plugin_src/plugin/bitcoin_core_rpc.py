@@ -215,7 +215,7 @@ class BitcoinCoreRPC:
             except Exception as e:
                 raise BitcoinCoreRPCError(f"ChainMonitor: _fetch_spent_utxos: Could not get wallet transactions: {e}")
             fetch_txs += 1
-            if len(wallet_txs) == 0:  # no more txs to fetch
+            if len(wallet_txs) == 0 or fetch_txs > 200:  # no more txs to fetch
                 return spent_utxos
             wallet_send_tx = wallet_txs[0] if wallet_txs[0]["category"] == "send" else None
             if not wallet_send_tx:  # fetched tx was no outgoing tx, ignoring it

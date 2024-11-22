@@ -802,15 +802,15 @@ class NostrTransport:  # (Logger):
                 self.check_direct_messages(),
             ]
         else:
-            raise Exception('This is a CLN plugin and should always run as server (for now)')
+            raise Exception('This is a CLN plugin and should always run as server')
         try:
             async with self.taskgroup as group:
                 for task in tasks:
                     await group.spawn(task)
         except Exception as e:
-            self.logger.error("taskgroup died.")
+            self.logger.error("Nostr taskgroup died.")
         finally:
-            self.logger.info("taskgroup stopped.")
+            self.logger.info("Nostr taskgroup stopped.")
 
     async def stop(self):
         self.logger.info("shutting down nostr transport")
