@@ -17,7 +17,7 @@ from .utils import OldTaskGroup, now, BelowDustLimit, TxBroadcastError
 from .bitcoin import DummyAddress
 from .crypto import ripemd, sha256
 from .lnutil import hex_to_bytes, REDEEM_AFTER_DOUBLE_SPENT_DELAY
-from .invoices import Invoice
+from .invoices import Invoice, HoldInvoice, InvoiceState
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants
 from .constants import (MIN_LOCKTIME_DELTA, LOCKTIME_DELTA_REFUND, MAX_LOCKTIME_DELTA,
@@ -232,6 +232,19 @@ class SwapManager:
         if swap.funding_txid is None:
             self.swaps.pop(swap.payment_hash.hex())
 
+    def _finish_normal_swap(self, swap: SwapData):
+        self.logger.info(f'finishing normal swap {swap.payment_hash.hex()}')
+        assert swap.preimage, f"Cannot settle without preimage: {swap.payment_hash.hex()}"
+        hold_invoice = self.lnworker.get_hold_invoice(swap.payment_hash)
+        hold_invoice.settle(swap.preimage)
+        if not hold_invoice.funding_status == InvoiceState.SETTLED:
+            self.logger.info(f'hold invoice settling failed: {swap.payment_hash}')
+            return
+        self.lnworker.delete_hold_invoice(swap.payment_hash)
+        self.lnworker.delete_payment_info(swap.payment_hash)
+        self.lnwatcher.remove_callback(swap.lockup_address)
+        self.swaps.pop(swap.payment_hash.hex())
+
     # @log_exceptions
     async def _claim_swap(self, swap: SwapData) -> None:
         assert self.lnwatcher
@@ -297,16 +310,13 @@ class SwapManager:
                     if sha256(preimage) == swap.payment_hash:
                         swap.preimage = preimage
                         self.logger.info(f'found preimage: {preimage.hex()}')
-                        self.lnworker.save_preimage(swap.payment_hash, preimage)
-                        # TODO: settle
-                        # self.lnworker.preimages[swap.payment_hash.hex()] = preimage.hex()
+                        return self._finish_normal_swap(swap)
                         # note: we must check the payment secret before we broadcast the funding tx
                     else:
                         # this is our refund tx
                         if spent_height > 0:
                             self.logger.info(f'refund tx confirmed: {txin.spent_txid} {spent_height}')
-                            self._fail_swap(swap, 'refund tx confirmed')
-                            return
+                            return self._fail_swap(swap, 'refund tx confirmed')
                         else:
                             # claim_tx.add_info_from_wallet(self.wallet)
                             claim_tx_fee = claim_tx.get_fee()
@@ -318,6 +328,11 @@ class SwapManager:
                 if remaining_time > 0:
                     # too early for refund
                     return
+
+                if swap.preimage:
+                    # we have been paid. do not try to get refund.
+                    return
+
             else:
                 if swap.preimage is None:
                     swap.preimage = self.lnworker.get_preimage(swap.payment_hash)
@@ -347,7 +362,7 @@ class SwapManager:
                 self.logger.info('utxo value below dust threshold')
                 return
             self.logger.info(f'adding claim tx {tx.txid()}')
-            self.wallet.adb.add_transaction(tx)
+            # self.wallet.adb.add_transaction(tx)
             swap.spending_txid = tx.txid()
             if funding_height.conf > 0: # or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
                 try:
