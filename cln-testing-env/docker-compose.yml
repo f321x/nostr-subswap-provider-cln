@@ -43,7 +43,8 @@ services:
       networks:
         - dev-net
       ports:
-        - "60601:60601"
+        - 0.0.0.0:60601:60601
+        - 0.0.0.0:50001:50001
       depends_on:
         - bitcoind
 
