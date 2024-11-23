@@ -4,7 +4,7 @@ services:
   bitcoind:
     container_name: mutinynet
     image: fedimint/mutinynet-bitcoind:master
-    command: --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333 -txindex=1
+    command: --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333 -txindex=1 -whitelist=download@127.0.0.1 -maxconnections=16
     ports:
       - 0.0.0.0:38333:38333
       - 0.0.0.0:38332:38332
@@ -33,6 +33,20 @@ services:
       - dev-net
     platform: linux/amd64
     command: --network=signet
+
+  electrs:
+      container_name: electrs
+      build: ./electrs
+      volumes:
+        - electrs_datadir:/data
+        - ./electrs/electrs.toml:/electrs.toml
+      networks:
+        - dev-net
+      ports:
+        - "60601:60601"
+      depends_on:
+        - bitcoind
+
 
 # normal signet (needed to test fee estimation, kind of impossible to get signet coins)
 #  bitcoind:
@@ -67,6 +81,8 @@ volumes:
   bitcoin_datadir:
     driver: local
   lightningd_datadir:
+    driver: local
+  electrs_datadir:
     driver: local
 
 networks:
