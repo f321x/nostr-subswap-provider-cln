@@ -1,26 +1,38 @@
 # bitcoin network: mutinynet [custom signet]
 
 services:
-  bitcoind:
-    container_name: mutinynet
-    image: fedimint/mutinynet-bitcoind:master
-    command: --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333 -txindex=1 -whitelist=download@127.0.0.1 -maxconnections=16
+#  bitcoind:  # mutinynet
+#    container_name: mutinynet
+#    image: fedimint/mutinynet-bitcoind:master
+#    command: --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333 -txindex=1 -whitelist=download@127.0.0.1 -maxconnections=16
+#    ports:
+#      - 0.0.0.0:38333:38333
+#      - 0.0.0.0:38332:38332
+#    volumes:
+#      - bitcoin_datadir:/root/.bitcoin
+#      - ${PWD}/fill-mempool.sh:/root/fill-mempool.sh
+#    networks:
+#      - dev-net
+#    platform: linux/amd64
+
+  bitcoind:  # signet
+    container_name: signet
+    image: dobtc/bitcoin:28.0
+    command: -signet -rpcbind="::" -rpcbind="0.0.0.0" -rpcallowip=0.0.0.0/0 --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333 -txindex=1 -whitelist=download@127.0.0.1 -maxconnections=16
     ports:
       - 0.0.0.0:38333:38333
       - 0.0.0.0:38332:38332
-    volumes:
-      - bitcoin_datadir:/root/.bitcoin
-      - ${PWD}/fill-mempool.sh:/root/fill-mempool.sh
     networks:
-      - dev-net
-    platform: linux/amd64
+        - dev-net
+    volumes:
+      - signet_datadir:/home/bitcoin/.bitcoin
 
   lightningd:
     container_name: lightningd
     image: elementsproject/lightningd:latest
     volumes:
       - lightningd_datadir:/root/.lightning
-      - bitcoin_datadir:/root/.bitcoin
+      - signet_datadir:/root/.bitcoin
       - ${PWD}/cln-config:/root/.lightning/config
       - ./plugins:/root/plugins
     environment:
@@ -42,8 +54,7 @@ services:
         - ./electrs/electrs.toml:/electrs.toml
       networks:
         - dev-net
-      ports:
-        - 0.0.0.0:60601:60601
+      ports:  # connect electrum to 127.0.0.1:50001:t
         - 0.0.0.0:50001:50001
       depends_on:
         - bitcoind
@@ -84,6 +95,8 @@ volumes:
   lightningd_datadir:
     driver: local
   electrs_datadir:
+    driver: local
+  signet_datadir:
     driver: local
 
 networks:
