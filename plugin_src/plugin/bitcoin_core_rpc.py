@@ -54,7 +54,7 @@ class BitcoinCoreRPC:
             # wallet is not loaded if we didn't return above
             try:
                 await self.iface.acall(method="createwallet",
-                                       params=[wallet_name, True, True, "", False, False, True],
+                                       params=[wallet_name, True, True, "", False, True, True],
                                        timeout=HttpxTimeout(5))
             except BitcoinRPCError as e:
                 raise BitcoinCoreRPCError(f"ChainMonitor _create_or_load_wallet: Could not create wallet: {e}")
