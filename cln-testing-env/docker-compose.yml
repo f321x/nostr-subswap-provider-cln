@@ -15,7 +15,7 @@ services:
 #      - dev-net
 #    platform: linux/amd64
 
-  bitcoind:  # signet
+  bitcoind:  # regular signet
     container_name: signet
     image: dobtc/bitcoin:28.0
     command: -signet -rpcbind="::" -rpcbind="0.0.0.0" -rpcallowip=0.0.0.0/0 --rpcuser=bitcoin --rpcpassword=bitcoin -zmqpubrawblock=tcp://[::]:48332 -zmqpubrawtx=tcp://[::]:48333 -txindex=1 -whitelist=download@127.0.0.1 -maxconnections=16
