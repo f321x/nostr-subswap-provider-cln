@@ -14,7 +14,8 @@ class BitcoinCoreRPC:
     def __init__(self, logger: PluginLogger,
                         bcore_rpc_credentials: 'BitcoinRPCCredentials' = None):
         self.iface = BitcoinRPC.from_config(url=bcore_rpc_credentials.url,
-                                            auth=bcore_rpc_credentials.auth)
+                                            auth=bcore_rpc_credentials.auth,
+                                            wallet_name="cln-subswapplugin")
         self._logger = logger
 
     async def _test_connection(self) -> None:
