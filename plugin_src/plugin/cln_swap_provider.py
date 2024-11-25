@@ -68,17 +68,18 @@ class CLNSwapProvider:
         await self.cln_lightning.run()
 
         # swap manager
-        # self.swap_manager = SwapManager(wallet=self.cln_chain_wallet,
-        #                                 lnworker=self.cln_lightning,
-        #                                 db=self.json_db,
-        #                                 plugin_config=self.config,
-        #                                 logger=self.logger)
+        self.swap_manager = SwapManager(wallet=self.cln_chain_wallet,
+                                        lnworker=self.cln_lightning,
+                                        db=self.json_db,
+                                        chain_monitor=self.chain_monitor,
+                                        plugin_config=self.config,
+                                        logger=self.logger)
 
 
     async def run(self):
         if not self.is_initialized:
             await self.initialize()
-        await asyncio.sleep(100000000)
+        # await asyncio.sleep(100000000)
         await self.swap_manager.main_loop()
         raise Exception("CLNSwapProvider main loop exited unexpectedly")
 

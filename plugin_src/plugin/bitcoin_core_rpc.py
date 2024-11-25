@@ -13,9 +13,10 @@ from .utils import TxMinedInfo
 class BitcoinCoreRPC:
     def __init__(self, logger: PluginLogger,
                         bcore_rpc_credentials: 'BitcoinRPCCredentials' = None):
+        self._wallet_name = "cln-subswapplugin"
         self.iface = BitcoinRPC.from_config(url=bcore_rpc_credentials.url,
                                             auth=bcore_rpc_credentials.auth,
-                                            wallet_name="cln-subswapplugin")
+                                            wallet_name=self._wallet_name,)
         self._logger = logger
 
     async def _test_connection(self) -> None:
@@ -76,8 +77,8 @@ class BitcoinCoreRPC:
         await self._test_connection()
         if not await self._txindex_enabled():
             raise BitcoinCoreRPCError("ChainMonitor: txindex is not enabled")
-        await self._create_or_load_wallet("cln-subswapplugin")
-        await self._validate_wallet_name("cln-subswapplugin")
+        await self._create_or_load_wallet(self._wallet_name)
+        await self._validate_wallet_name(self._wallet_name)
         while not await self.is_up_to_date():
             self._logger.info("ChainMonitor: Waiting for chain to sync")
             await asyncio.sleep(10)
