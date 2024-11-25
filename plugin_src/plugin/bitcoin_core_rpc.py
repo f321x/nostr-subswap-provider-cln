@@ -54,7 +54,7 @@ class BitcoinCoreRPC:
             # wallet is not loaded if we didn't return above
             try:
                 await self.iface.acall(method="createwallet",
-                                       params=[wallet_name, True, True, "", False, True, True],
+                                       params=[wallet_name, True, True, "", False, True, True, False],
                                        timeout=HttpxTimeout(5))
             except BitcoinRPCError as e:
                 raise BitcoinCoreRPCError(f"ChainMonitor _create_or_load_wallet: Could not create wallet: {e}")
@@ -103,16 +103,51 @@ class BitcoinCoreRPC:
     async def register_address(self, address: str) -> None:
         """Add an address to the wallet so bitcoin core begins monitoring it. This should happen right after creation
         so we don't have to rescan which would be very slow."""
-        timestamp = int(time.time())
+
+        # Create a descriptor for the address
+        descriptor = f"addr({address})"
+
+        # Create the import request
+        import_request = [{
+            "desc": descriptor,
+            "timestamp": "now",  # Use "now" to avoid rescanning
+            "label": "swapplugin",
+            "internal": False,
+            "active": False  # We only want to watch the address, not make it active
+        }]
+
         try:
-            await self.iface.acall(method="importaddress",
-                                   params=[address, f"swapplugin", False, False],
-                                   timeout=HttpxTimeout(5))
+            result = await self.iface.acall(
+                method="importdescriptors",
+                params=[import_request],
+                timeout=HttpxTimeout(5)
+            )
+
+            # Check the result array
+            if not result or len(result) == 0:
+                raise BitcoinCoreRPCError("ChainMonitor register_address: Empty response from importdescriptors")
+
+            import_result = result[0]  # Get first (and only) result, because we only imported one descriptor
+
+            # Check for success
+            if not import_result['success']:
+                # If there's an error object, use it
+                if 'error' in import_result:
+                    error_msg = import_result['error']
+                    raise BitcoinCoreRPCError(f"ChainMonitor register_address: Import failed: {error_msg}")
+                # If there are warnings, include them
+                elif 'warnings' in import_result:
+                    warnings = ', '.join(import_result['warnings'])
+                    raise BitcoinCoreRPCError(f"ChainMonitor register_address: Import failed with warnings: {warnings}")
+                else:
+                    raise BitcoinCoreRPCError("ChainMonitor register_address: Import failed without specific error")
+
         except BitcoinRPCError as e:
             if e.error["code"] == -4:
-                raise WrongWalletLoadedError(f"ChainMonitor: "
-                                             f"Descriptor wallet loaded in bitcoin core, we need a legacy wallet {e}")
-            raise BitcoinCoreRPCError(f"ChainMonitor import_address_to_monitor: Could not import address: {e}")
+                raise WrongWalletLoadedError(
+                    f"ChainMonitor: Legacy wallet loaded in bitcoin core, we need a descriptor wallet {e}"
+                )
+            raise BitcoinCoreRPCError(f"ChainMonitor register_address: Could not import address: {e}")
 
     async def get_tx_height(self, txid_hex: str) -> TxMinedInfo:
         try:
