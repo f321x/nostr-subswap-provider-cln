@@ -2,6 +2,6 @@ daemon_p2p_addr="bitcoind:38333"
 daemon_rpc_addr="bitcoind:38332"
 network="signet"
 auth="bitcoin:bitcoin"
-#signet_magic="a5df2dcb"  # mutinynet
+signet_magic="a5df2dcb"  # mutinynet
 log_filters="WARNING"
 electrum_rpc_addr="0.0.0.0:50001"
