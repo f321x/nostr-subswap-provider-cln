@@ -184,10 +184,14 @@ class SwapManager:
         await self.taskgroup.cancel_remaining()
 
     def assert_constants(self):
-        assert MIN_LOCKTIME_DELTA <= LOCKTIME_DELTA_REFUND <= MAX_LOCKTIME_DELTA
-        assert MAX_LOCKTIME_DELTA < self.lnworker.MIN_FINAL_CLTV_DELTA_ACCEPTED
-        assert MAX_LOCKTIME_DELTA < self.lnworker.MIN_FINAL_CLTV_DELTA_FOR_INVOICE
-        assert MAX_LOCKTIME_DELTA < MIN_FINAL_CLTV_DELTA_FOR_CLIENT
+        assert MIN_LOCKTIME_DELTA <= LOCKTIME_DELTA_REFUND <= MAX_LOCKTIME_DELTA, \
+            f"assert failed: {MIN_LOCKTIME_DELTA} <= {LOCKTIME_DELTA_REFUND} <= {MAX_LOCKTIME_DELTA}"
+        assert MAX_LOCKTIME_DELTA < self.lnworker.MIN_FINAL_CLTV_DELTA_ACCEPTED, \
+            f"assert failed: {MAX_LOCKTIME_DELTA} < {self.lnworker.MIN_FINAL_CLTV_DELTA_ACCEPTED}"
+        assert MAX_LOCKTIME_DELTA < self.lnworker.MIN_FINAL_CLTV_DELTA_FOR_INVOICE, \
+            f"assert failed: {MAX_LOCKTIME_DELTA} < {self.lnworker.MIN_FINAL_CLTV_DELTA_FOR_INVOICE}"
+        assert MAX_LOCKTIME_DELTA < MIN_FINAL_CLTV_DELTA_FOR_CLIENT, \
+            f"assert failed: {MAX_LOCKTIME_DELTA} < {MIN_FINAL_CLTV_DELTA_FOR_CLIENT}"
 
     async def pay_pending_ln_invoice(self, key):
         self.logger.debug(f'trying to pay invoice {key}')
