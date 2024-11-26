@@ -82,7 +82,7 @@ class CLNChainWallet:
             feerates = feerates['perkb']['estimates']
         except (RpcError, TimeoutError) as e:
             feerates = []
-            self.logger.error("get_chain_fee failed to call feerates rpc: %s. Using fallback feerate", e)
+            self.logger.error(f"get_chain_fee failed to call feerates rpc: {e}. Using fallback feerate")
 
         prev_blockcount, feerate_pervb = 0, None
         for feerate in feerates:  # get feerate closest to confirmation target todo: we could also interpolate
@@ -91,7 +91,8 @@ class CLNChainWallet:
                 feerate_pervb = feerate['smoothed_feerate'] / 1000
         if feerate_pervb is None:
             feerate_pervb = self.config.fallback_fee_sat_per_vb
-            self.logger.warning("get_chain_fee using fallback fee rate of %s sat/vbyte", feerate_pervb)
+            self.logger.warning(f"get_chain_fee using fallback fee rate of {feerate_pervb} sat/vbyte because result"
+                                f" from cln rpc call was {feerates}")
         return math.ceil(feerate_pervb * size_vbyte)
 
     def get_receiving_address(self) -> str:

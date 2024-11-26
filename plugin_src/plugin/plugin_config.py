@@ -22,7 +22,7 @@ class PluginConfig:
         self.cln_config: dict = cln_configuration
         self.bcore_rpc_credentials = BitcoinRPCCredentials.from_cln_config_dict(cln_configuration)
         self.network = self.__parse_network_type(cln_configuration["network"]["value_str"])  # type: Optional[AbstractNet]
-        self.nostr_relays: [Relay] = []
+        self.nostr_relays: [str] = []
         self.swapserver_fee_millionths: int = 10_000
         self.confirmation_speed_target_blocks: int = 10
         self.fallback_fee_sat_per_vb:int = 60
@@ -37,7 +37,7 @@ class PluginConfig:
                             logger=logger)
         constants.net = config.network
         if relays := os.getenv("NOSTR_RELAYS"):
-            config.nostr_relays.extend(Relay(url=url.strip()) for url in relays.split(","))
+            config.nostr_relays.extend(url.strip() for url in relays.split(","))
         else:
             raise Exception("No Nostr relays found. Set NOSTR_RELAYS as csv in env.")
 
@@ -94,9 +94,8 @@ class PluginConfig:
         return feerate
 
     def __str__(self):
-        relays = [relay.url for relay in self.nostr_relays]
         return f"nostr_pubkey={self.nostr_keypair.pubkey.hex()}, " \
-               f"nostr_relays={relays}, " \
+               f"nostr_relays={self.nostr_relays}, " \
                f"swapserver_fee_millionths={self.swapserver_fee_millionths}, " \
                f"confirmation_speed_target_blocks={self.confirmation_speed_target_blocks}, " \
                f"fallback_fee_sat_per_vb={self.fallback_fee_sat_per_vb})"

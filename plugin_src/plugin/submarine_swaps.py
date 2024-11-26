@@ -11,6 +11,7 @@ from electrum_aionostr.util import to_nip19
 from collections import defaultdict
 
 from .bitcoin import opcodes, dust_threshold, construct_script, script_to_p2wsh, construct_witness
+from .segwit_addr import bech32_encode, Encoding
 from .transaction import (PartialTxOutput, PartialTransaction, TxOutpoint,
                           OPPushDataGeneric, OPPushDataPubkey, PartialTxInput)
 from .utils import OldTaskGroup, now, BelowDustLimit, TxBroadcastError
@@ -154,8 +155,6 @@ class SwapManager:
     # @log_exceptions
     async def run_nostr_server(self):
         with NostrTransport(config=self.config, sm=self) as transport:
-            self.logger.info(f'starting nostr transport with pubkey: {transport.nostr_pubkey}')
-            self.logger.info(f'nostr relays: {transport.relays}')
             await transport.is_connected.wait()
             self.logger.info(f'nostr is connected')
             while True:
@@ -165,6 +164,8 @@ class SwapManager:
                 await asyncio.sleep(600)
 
     async def main_loop(self):
+        if self.is_initialized.is_set():
+            raise Exception("swap manager main_loop called twice, already running")
         # readd all swaps to lnwatcher
         for k, swap in self.swaps.items():
             if swap.is_redeemed:
@@ -851,14 +852,16 @@ class NostrTransport:  # (Logger):
             'claim_mining_fee': sm.claim_fee,
             'min_amount': sm._min_amount,
             'max_amount': sm._max_amount,
-            'relays': sm.config.NOSTR_RELAYS,
+            'relays': sm.config.nostr_relays,
         }
         self.logger.info(f'publishing swap offer..')
+        self.logger.debug(f'offer: {offer}')
         event_id = await aionostr._add_event(
             self.relay_manager,
             kind=self.NOSTR_SWAP_OFFER,
             content=json.dumps(offer),
             private_key=self.nostr_private_key)
+        sm.is_initialized.set()
 
 #     @log_exceptions
     async def check_direct_messages(self):
