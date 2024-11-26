@@ -36,6 +36,11 @@ LOCKTIME_DELTA_REFUND = 70
 MAX_LOCKTIME_DELTA = 100
 MIN_FINAL_CLTV_DELTA_FOR_CLIENT = 3 * 144  # note: put in invoice, but is not enforced by receiver in lnpeer.py
 
+# the minimum cltv_expiry accepted for newly received HTLCs
+MIN_FINAL_CLTV_DELTA_ACCEPTED = 144
+# set it a tiny bit higher for invoices as blocks could get mined
+# during forward path of payment
+MIN_FINAL_CLTV_DELTA_FOR_INVOICE = MIN_FINAL_CLTV_DELTA_ACCEPTED + 3
 
 GIT_REPO_URL = "https://github.com/spesmilo/electrum"
 GIT_REPO_ISSUES_URL = "https://github.com/spesmilo/electrum/issues"
