@@ -1,0 +1,6 @@
+pyln-client>=24.8.1,<25.0.0
+electrum-aionostr
+attrs>=24.2.0,<25.0.0
+jsonpatch>=1.33,<2.0
+python-dotenv>=1.0.1,<2.0
+git+https://github.com/f321x/bitcoin-python-async-rpc@master
