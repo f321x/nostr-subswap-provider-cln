@@ -29,11 +29,13 @@ services:
 
   lightningd:
     container_name: lightningd
-    image: elementsproject/lightningd:latest
+    build:
+        context: ./cln
+        network: host
     volumes:
       - lightningd_datadir:/root/.lightning
       - signet_datadir:/root/.bitcoin
-      - ${PWD}/cln-config:/root/.lightning/config
+      - ./cln/cln-config:/root/.lightning/config
       - ./plugins:/root/plugins
     environment:
       - NOSTR_RELAYS=wss://relay.damus.io,wss://relay.primal.net,wss://nos.lol
