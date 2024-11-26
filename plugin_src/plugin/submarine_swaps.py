@@ -21,7 +21,8 @@ from .invoices import Invoice, HoldInvoice, InvoiceState
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants
 from .constants import (MIN_LOCKTIME_DELTA, LOCKTIME_DELTA_REFUND, MAX_LOCKTIME_DELTA,
-                       MIN_FINAL_CLTV_DELTA_FOR_CLIENT, CLAIM_FEE_SIZE, LOCKUP_FEE_SIZE)
+                       MIN_FINAL_CLTV_DELTA_FOR_CLIENT, CLAIM_FEE_SIZE, LOCKUP_FEE_SIZE,
+                        MIN_FINAL_CLTV_DELTA_ACCEPTED, MIN_FINAL_CLTV_DELTA_FOR_INVOICE)
 from .cln_chain import CLNChainWallet
 from .cln_lightning import CLNLightning
 from .plugin_config import PluginConfig
@@ -186,10 +187,10 @@ class SwapManager:
     def assert_constants(self):
         assert MIN_LOCKTIME_DELTA <= LOCKTIME_DELTA_REFUND <= MAX_LOCKTIME_DELTA, \
             f"assert failed: {MIN_LOCKTIME_DELTA} <= {LOCKTIME_DELTA_REFUND} <= {MAX_LOCKTIME_DELTA}"
-        assert MAX_LOCKTIME_DELTA < self.lnworker.MIN_FINAL_CLTV_DELTA_ACCEPTED, \
-            f"assert failed: {MAX_LOCKTIME_DELTA} < {self.lnworker.MIN_FINAL_CLTV_DELTA_ACCEPTED}"
-        assert MAX_LOCKTIME_DELTA < self.lnworker.MIN_FINAL_CLTV_DELTA_FOR_INVOICE, \
-            f"assert failed: {MAX_LOCKTIME_DELTA} < {self.lnworker.MIN_FINAL_CLTV_DELTA_FOR_INVOICE}"
+        assert MAX_LOCKTIME_DELTA < MIN_FINAL_CLTV_DELTA_ACCEPTED, \
+            f"assert failed: {MAX_LOCKTIME_DELTA} < {MIN_FINAL_CLTV_DELTA_ACCEPTED}"
+        assert MAX_LOCKTIME_DELTA < MIN_FINAL_CLTV_DELTA_FOR_INVOICE, \
+            f"assert failed: {MAX_LOCKTIME_DELTA} < {MIN_FINAL_CLTV_DELTA_FOR_INVOICE}"
         assert MAX_LOCKTIME_DELTA < MIN_FINAL_CLTV_DELTA_FOR_CLIENT, \
             f"assert failed: {MAX_LOCKTIME_DELTA} < {MIN_FINAL_CLTV_DELTA_FOR_CLIENT}"
 

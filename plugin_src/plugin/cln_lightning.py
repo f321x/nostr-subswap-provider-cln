@@ -14,7 +14,7 @@ from .crypto import sha256
 from .invoices import PR_UNPAID, PR_PAID, Invoice, LN_EXPIRY_NEVER
 from .json_db import JsonDB
 from .plugin_config import PluginConfig
-from .constants import MIN_FINAL_CLTV_DELTA_FOR_CLIENT
+from .constants import MIN_FINAL_CLTV_DELTA_FOR_CLIENT, MIN_FINAL_CLTV_DELTA_ACCEPTED, MIN_FINAL_CLTV_DELTA_FOR_INVOICE
 from .utils import call_blocking_with_timeout, ShortID
 from .lnutil import LnFeatures, filter_suitable_recv_chans
 from .invoices import HoldInvoice, DuplicateInvoiceCreationError, Htlc, InvoiceState
@@ -43,8 +43,8 @@ class CLNLightning:
     INBOUND_LIQUIDITY_FACTOR = 0.9  # Buffer factor for inbound liquidity calculation (use only 90% of inbound capacity)
 
     def __init__(self, *, plugin_instance: CLNPlugin, config: PluginConfig, db: JsonDB, logger: PluginLogger):
-        self.MIN_FINAL_CLTV_DELTA_ACCEPTED: int = config.cln_config["cltv-final"]["value_int"]
-        self.MIN_FINAL_CLTV_DELTA_FOR_INVOICE: int = self.MIN_FINAL_CLTV_DELTA_ACCEPTED + 3
+        # self.MIN_FINAL_CLTV_DELTA_ACCEPTED: int = config.cln_config["cltv-final"]["value_int"]
+        # self.MIN_FINAL_CLTV_DELTA_FOR_INVOICE: int = self.MIN_FINAL_CLTV_DELTA_ACCEPTED + 3
 
         self._rpc = plugin_instance.plugin.rpc
         plugin_instance.set_htlc_hook(self.plugin_htlc_accepted_hook)
@@ -181,7 +181,8 @@ class CLNLightning:
             htlc.fail()
             return True
 
-        if incoming_htlc["cltv_expiry_relative"] < decoded_invoice["min_final_cltv_expiry"]:
+        if (incoming_htlc["cltv_expiry_relative"] < decoded_invoice["min_final_cltv_expiry"] or
+            incoming_htlc["cltv_expiry_relative"] < MIN_FINAL_CLTV_DELTA_ACCEPTED):
             self._logger.warning(f"handle_htlc: Too short cltv: ({incoming_htlc['cltv_expiry_relative']} < "
                                f"{decoded_invoice['min_final_cltv_expiry']})")
             htlc.fail()
@@ -363,7 +364,7 @@ class CLNLightning:
             paymenthash=payment_hash,
             amount=Decimal(amount_msat) / Decimal(COIN*1000),
             tags=[
-                     ('c', MIN_FINAL_CLTV_DELTA_FOR_CLIENT if min_final_cltv_expiry_delta is None
+                     ('c', MIN_FINAL_CLTV_DELTA_FOR_INVOICE if min_final_cltv_expiry_delta is None
                                                                 else min_final_cltv_expiry_delta),
                      ('d', message if message and len(message) > 0 else f"swap {datetime.now()}"),
                      ('x', LN_EXPIRY_NEVER if expiry == 0 else expiry),
