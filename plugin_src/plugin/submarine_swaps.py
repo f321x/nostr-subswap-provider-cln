@@ -161,6 +161,9 @@ class SwapManager:
                 # todo: publish everytime fees have changed
                 self.server_update_pairs()
                 await transport.publish_offer(self)
+                if not self.is_initialized.is_set():  # if publish offer didn't set initialized we retry faster
+                    await asyncio.sleep(10)
+                    continue
                 await asyncio.sleep(600)
 
     async def main_loop(self):
@@ -856,12 +859,16 @@ class NostrTransport:  # (Logger):
         }
         self.logger.info(f'publishing swap offer..')
         self.logger.debug(f'offer: {offer}')
-        event_id = await aionostr._add_event(
-            self.relay_manager,
-            kind=self.NOSTR_SWAP_OFFER,
-            content=json.dumps(offer),
-            private_key=self.nostr_private_key)
-        sm.is_initialized.set()
+        try:
+            event_id = await aionostr._add_event(
+                self.relay_manager,
+                kind=self.NOSTR_SWAP_OFFER,
+                content=json.dumps(offer),
+                private_key=self.nostr_private_key)
+            self.logger.debug(f'published swap offer: {event_id}')
+            sm.is_initialized.set()
+        except TimeoutError as e:
+            self.logger.error(f'NostrTransport: publish_offer: failed to publish swap offer, timeout: {e}')
 
 #     @log_exceptions
     async def check_direct_messages(self):
