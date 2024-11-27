@@ -106,7 +106,7 @@ class CLNChainWallet:
 
     def balance_sat(self) -> int:
         try:
-            outputs = json.loads(self.rpc.listfunds()['outputs'])
+            outputs = self.rpc.listfunds()['outputs']
         except RpcError as e:
             raise Exception("CLNChainWallet: balance_sat failed to call listfunds rpc: " + str(e))
         balance = 0
