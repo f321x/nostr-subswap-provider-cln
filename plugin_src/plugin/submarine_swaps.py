@@ -774,7 +774,7 @@ class SwapManager:
                 self.logger.warning(f'not enough onchain balance to satisfy: {self.wallet.balance_sat()} sat'
                                     f', rejecting swap for {lightning_amount_sat} sat')
                 return {'error': 'not enough onchain balance'}
-            swap, invoice, prepay_invoice = self.create_normal_swap(
+            swap, invoice, prepay_invoice = await self.create_normal_swap(
                 lightning_amount_sat=lightning_amount_sat,
                 payment_hash=payment_hash,
                 their_pubkey=their_pubkey
