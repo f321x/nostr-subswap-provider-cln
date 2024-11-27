@@ -67,7 +67,9 @@ class CLNChainWallet:
             response = self.rpc.getinfo()
         except RpcError as e:
             raise e
-        if 'warning_bitcoind_sync' or 'warning_lightningd_sync' or not 'blockheight' in response:
+        if ('warning_bitcoind_sync' in response
+            or 'warning_lightningd_sync' in response
+            or not 'blockheight' in response):
             raise Exception(f"get_local_height: cln backend is not synced, response: {response}")
         blockheight = response['blockheight']
         if response['network'] == 'bitcoin':
