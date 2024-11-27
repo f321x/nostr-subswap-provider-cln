@@ -870,7 +870,7 @@ class NostrTransport:  # (Logger):
             'claim_mining_fee': sm.claim_fee,
             'min_amount': sm._min_amount,
             'max_amount': sm._max_amount,
-            'relays': sm.config.nostr_relays,
+            'relays': sm.config.nostr_relays_csv,
         }
         self.logger.info(f'publishing swap offer..')
         self.logger.debug(f'offer: {offer}')

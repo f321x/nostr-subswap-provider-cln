@@ -93,6 +93,10 @@ class PluginConfig:
             feerate = "slow"
         return feerate
 
+    @property
+    def nostr_relays_csv(self) -> str:
+        return ",".join(self.nostr_relays)
+
     def __str__(self):
         return f"nostr_pubkey={self.nostr_keypair.pubkey.hex()}, " \
                f"nostr_relays={self.nostr_relays}, " \
