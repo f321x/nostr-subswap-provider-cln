@@ -882,8 +882,9 @@ class NostrTransport:  # (Logger):
                 private_key=self.nostr_private_key)
             self.logger.debug(f'published swap offer: {event_id}')
             sm.is_initialized.set()
-        except TimeoutError as e:
-            self.logger.error(f'NostrTransport: publish_offer: failed to publish swap offer, timeout: {e}')
+        except asyncio.exceptions.TimeoutError:
+            self.logger.error(f'NostrTransport: publish_offer: failed to publish swap offer, '
+                              f'timeout: {traceback.format_exc()}')
 
 #     @log_exceptions
     async def check_direct_messages(self):
