@@ -453,6 +453,19 @@ class CLNLightning:
                 inbound_capacity_sat += (channel["amount_msat"] - channel["our_amount_msat"]) / 1000
         return int(inbound_capacity_sat * self.INBOUND_LIQUIDITY_FACTOR)
 
+    def num_sats_can_send(self) -> int:
+        """returns max outbound capacity"""
+        outbound_capacity_sat = 0
+        try:
+            available_channels = self._rpc.listfunds()["channels"]
+        except Exception as e:
+            self._logger.error(f"num_sats_can_send: listfunds rpc failed: {e}")
+            return 0
+        for channel in available_channels:
+            if channel["connected"]:
+                outbound_capacity_sat += channel["our_amount_msat"] / 1000
+        return int(outbound_capacity_sat * self.INBOUND_LIQUIDITY_FACTOR)
+
 
 class InvalidInvoiceCreationError(Exception):
     pass

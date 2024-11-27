@@ -1,4 +1,5 @@
 import math
+import json
 from typing import Optional
 from pyln.client import RpcError, LightningRpc
 
@@ -103,4 +104,13 @@ class CLNChainWallet:
             raise Exception("get_receiving_address failed to call newaddr rpc: " + str(e))
         return address
 
-
+    def balance_sat(self) -> int:
+        try:
+            outputs = json.loads(self.rpc.listfunds()['outputs'])
+        except RpcError as e:
+            raise Exception("CLNChainWallet: balance_sat failed to call listfunds rpc: " + str(e))
+        balance = 0
+        for output in outputs:
+            if output['status'] == 'confirmed' and output['reserved'] == False:
+                balance += output['amount_msat'] // 1000
+        return int(balance * 0.9)

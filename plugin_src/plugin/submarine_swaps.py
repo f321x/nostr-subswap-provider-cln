@@ -732,6 +732,9 @@ class SwapManager:
         lightning_amount_sat = request['invoiceAmount']
         their_pubkey = bytes.fromhex(request['refundPublicKey'])
         assert len(their_pubkey) == 33
+        if self.lnworker.num_sats_can_send() < lightning_amount_sat:
+            self.logger.warning('not enough outgoing capacity to satisfy swap, rejecting swap')
+            return {'error': 'not enough outgoing capacity'}
         swap = await self.create_reverse_swap(
             lightning_amount_sat=lightning_amount_sat,
             their_pubkey=their_pubkey,
@@ -760,7 +763,11 @@ class SwapManager:
             assert len(payment_hash) == 32
             assert len(their_pubkey) == 33
             if self.lnworker.num_sats_can_receive() < lightning_amount_sat:
+                self.logger.warning('not enough incoming capacity to receive swap, rejecting swap')
                 return {'error': 'not enough incoming capacity, please open channel'}
+            if self.wallet.balance_sat() < lightning_amount_sat:
+                self.logger.warning('not enough onchain balance to satisfy, rejecting swap')
+                return {'error': 'not enough onchain balance'}
             swap, invoice, prepay_invoice = self.create_normal_swap(
                 lightning_amount_sat=lightning_amount_sat,
                 payment_hash=payment_hash,
