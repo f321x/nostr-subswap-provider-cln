@@ -262,7 +262,7 @@ class SwapManager:
         if not await self.lnwatcher.is_up_to_date():
             self.logger.warning('_claim_swap caled but core node not up to date, skipping')
             return
-        current_height = await self.lnwatcher.get_local_height()
+        current_height = await self.wallet.get_local_height()
         remaining_time = swap.locktime - current_height
         txos = await self.lnwatcher.get_addr_outputs(swap.lockup_address)
 
@@ -410,7 +410,7 @@ class SwapManager:
     async def create_normal_swap(self, *, lightning_amount_sat: int, payment_hash: bytes, their_pubkey: bytes = None):
         """ server method """
         assert lightning_amount_sat
-        locktime = self.wallet.get_local_height() + LOCKTIME_DELTA_REFUND
+        locktime = await self.wallet.get_local_height() + LOCKTIME_DELTA_REFUND
         our_privkey = os.urandom(32)
         our_pubkey = ECPrivkey(our_privkey).get_public_key_bytes(compressed=True)
         onchain_amount_sat = self._get_recv_amount(lightning_amount_sat, is_reverse=True) # what the client is going to receive
@@ -503,7 +503,7 @@ class SwapManager:
     async def create_reverse_swap(self, *, lightning_amount_sat: int, their_pubkey: bytes) -> SwapData:
         """ server method. """
         assert lightning_amount_sat is not None
-        locktime = self.wallet.get_local_height() + LOCKTIME_DELTA_REFUND
+        locktime = await self.wallet.get_local_height() + LOCKTIME_DELTA_REFUND
         privkey = os.urandom(32)
         our_pubkey = ECPrivkey(privkey).get_public_key_bytes(compressed=True)
         onchain_amount_sat = self._get_send_amount(lightning_amount_sat, is_reverse=False)

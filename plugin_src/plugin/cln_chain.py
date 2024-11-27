@@ -1,5 +1,5 @@
 import math
-import json
+import asyncio
 from typing import Optional
 from pyln.client import RpcError, LightningRpc
 
@@ -61,16 +61,24 @@ class CLNChainWallet:
         except RpcError as e:
             raise TxBroadcastError(e) from e
 
-    def get_local_height(self) -> int:
+    async def get_local_height(self, retries_30sec: int = 20) -> int:
         """Returns the current block height of the cln backend."""
-        try:
-            response = self.rpc.getinfo()
-        except RpcError as e:
-            raise e
-        if ('warning_bitcoind_sync' in response
-            or 'warning_lightningd_sync' in response
-            or not 'blockheight' in response):
-            raise Exception(f"get_local_height: cln backend is not synced, response: {response}")
+        # we retry a couple of times as cln can be out of sync on new blocks or startup for some time
+        while True:
+            try:
+                response = self.rpc.getinfo()
+            except RpcError as e:
+                raise e
+            if ('warning_bitcoind_sync' in response
+                or 'warning_lightningd_sync' in response
+                or not 'blockheight' in response):
+                self.logger.warning(f"get_local_height: cln backend is not synced, waiting, response: {response}")
+                if retries_30sec <= 0:
+                    raise Exception(f"get_local_height: cln backend is not synced, response: {response}")
+                retries_30sec -= 1
+                await asyncio.sleep(30)
+            else:
+                break
         blockheight = response['blockheight']
         if response['network'] == 'bitcoin':
             assert blockheight > 869000, "get_local_height: cln backend returns invalid height"
