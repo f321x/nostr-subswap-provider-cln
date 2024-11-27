@@ -1,5 +1,5 @@
 pyln-client>=24.8.1,<25.0.0
-electrum-aionostr
+git+https://github.com/f321x/aionostr-electrum-fork@fix_loop
 attrs>=24.2.0,<25.0.0
 jsonpatch>=1.33,<2.0
 python-dotenv>=1.0.1,<2.0

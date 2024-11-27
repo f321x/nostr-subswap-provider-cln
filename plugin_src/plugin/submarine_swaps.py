@@ -1,4 +1,6 @@
 import asyncio
+import traceback
+
 import attr
 import json
 import os
@@ -844,8 +846,8 @@ class NostrTransport:  # (Logger):
             async with self.taskgroup as group:
                 for task in tasks:
                     await group.spawn(task)
-        except Exception as e:
-            self.logger.error("Nostr taskgroup died.")
+        except Exception:
+            self.logger.error(f"Nostr taskgroup died. {traceback.format_exc()}")
         finally:
             self.logger.info("Nostr taskgroup stopped.")
 
