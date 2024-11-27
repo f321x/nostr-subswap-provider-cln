@@ -760,7 +760,7 @@ class SwapManager:
             assert len(payment_hash) == 32
             assert len(their_pubkey) == 33
             if self.lnworker.num_sats_can_receive() < lightning_amount_sat:
-                return {'error': 'not enough incoming capacity, please open cannel'}
+                return {'error': 'not enough incoming capacity, please open channel'}
             swap, invoice, prepay_invoice = self.create_normal_swap(
                 lightning_amount_sat=lightning_amount_sat,
                 payment_hash=payment_hash,
