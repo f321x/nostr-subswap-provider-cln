@@ -40,6 +40,44 @@ bfh = bytes.fromhex
 
 class BitcoinException(Exception): pass
 
+INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
+CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+GENERATOR = [0xf5dee51989, 0xa9fdca3312, 0x1bab10e32d, 0x3706b1677a, 0x644d626ffd]
+
+def _descsum_polymod(symbols):
+    """Internal function that computes the descriptor checksum."""
+    chk = 1
+    for value in symbols:
+        top = chk >> 35
+        chk = (chk & 0x7ffffffff) << 5 ^ value
+        for i in range(5):
+            chk ^= GENERATOR[i] if ((top >> i) & 1) else 0
+    return chk
+
+def _descsum_expand(s):
+    """Internal function that does the character to symbol expansion"""
+    groups = []
+    symbols = []
+    for c in s:
+        if not c in INPUT_CHARSET:
+            return None
+        v = INPUT_CHARSET.find(c)
+        symbols.append(v & 31)
+        groups.append(v >> 5)
+        if len(groups) == 3:
+            symbols.append(groups[0] * 9 + groups[1] * 3 + groups[2])
+            groups = []
+    if len(groups) == 1:
+        symbols.append(groups[0])
+    elif len(groups) == 2:
+        symbols.append(groups[0] * 3 + groups[1])
+    return symbols
+
+def descsum_create(s):
+    """Add a checksum to a descriptor without"""
+    symbols = _descsum_expand(s) + [0, 0, 0, 0, 0, 0, 0, 0]
+    checksum = _descsum_polymod(symbols) ^ 1
+    return s + '#' + ''.join(CHECKSUM_CHARSET[(checksum >> (5 * (7 - i))) & 31] for i in range(8))
 
 def inv_dict(d):
     return {v: k for k, v in d.items()}

@@ -1,3 +1,5 @@
+import traceback
+
 import attr
 from bitcoinrpc import BitcoinRPC, RPCError as BitcoinRPCError
 from typing import Optional, Tuple, List
@@ -8,7 +10,7 @@ import time
 
 from .cln_logger import PluginLogger
 from .transaction import Transaction, PartialTxInput, TxOutpoint
-from .utils import TxMinedInfo
+from .utils import TxMinedInfo, descsum_create
 
 class BitcoinCoreRPC:
     def __init__(self, logger: PluginLogger,
@@ -107,7 +109,7 @@ class BitcoinCoreRPC:
         so we don't have to rescan which would be very slow."""
 
         # Create a descriptor for the address
-        descriptor = f"addr({address})"
+        descriptor = descsum_create(f"addr({address})")
 
         # Create the import request
         import_request = [{
@@ -202,10 +204,10 @@ class BitcoinCoreRPC:
         try:  # minconf, include_empty, include_watchonly, address_filter, include_immature_cb
             received = json.loads(await self.iface.acall(method="listreceivedbyaddress",
                                               params=[1, True, True, address, False]))
-            utxos = json.loads(await self.iface.acall(method="listunspent",
-                                           params=[1, 9999999, [address]]))
-        except Exception as e:
-            raise BitcoinCoreRPCError(f"ChainMonitor: get_addr_outputs call for {address} failed: {e}")
+            utxos = await self.iface.acall(method="listunspent",
+                                           params=[1, 9999999, [address]])
+        except Exception:
+            raise BitcoinCoreRPCError(f"ChainMonitor: get_addr_outputs call for {address} failed: {traceback.format_exc()}")
         if len(received) == 0:
             raise UnknownAddressError(f"ChainMonitor: get_addr_outputs: Address {address} hasn't been imported before")
 

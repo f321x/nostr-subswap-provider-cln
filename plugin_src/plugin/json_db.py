@@ -308,7 +308,6 @@ class JsonDB:  # (Logger):
 
     @locked
     def add_patch(self, patch):
-        print(f"patch: {patch}", file=sys.stderr)
         self.pending_changes.append(json.dumps(patch, cls=self.encoder))
         self.set_modified(True)
 

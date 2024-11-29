@@ -787,7 +787,7 @@ class SwapManager:
                 'invoice': invoice,
                 'minerFeeInvoice': prepay_invoice,
                 'lockupAddress': swap.lockup_address,
-                'redeemScript': swap.redeem_script.hex(),
+                'redeemScript': swap.redeem_script,
                 'timeoutBlockHeight': swap.locktime,
                 "onchainAmount": swap.onchain_amount,
             }
@@ -877,17 +877,20 @@ class NostrTransport:  # (Logger):
         }
         self.logger.info(f'publishing swap offer..')
         self.logger.debug(f'offer: {offer}')
-        try:
-            event_id = await aionostr._add_event(
-                self.relay_manager,
-                kind=self.NOSTR_SWAP_OFFER,
-                content=json.dumps(offer),
-                private_key=self.nostr_private_key)
-            self.logger.debug(f'published swap offer: {event_id}')
-            sm.is_initialized.set()
-        except asyncio.exceptions.TimeoutError:
-            self.logger.error(f'NostrTransport: publish_offer: failed to publish swap offer, '
-                              f'timeout: {traceback.format_exc()}')
+        while True:  # try to publish until we don't timeout or get another exception
+            try:
+                event_id = await aionostr._add_event(
+                    self.relay_manager,
+                    kind=self.NOSTR_SWAP_OFFER,
+                    content=json.dumps(offer),
+                    private_key=self.nostr_private_key)
+                self.logger.debug(f'published swap offer: {event_id}')
+                sm.is_initialized.set()
+                break
+            except asyncio.exceptions.TimeoutError:
+                self.logger.debug(traceback.format_exc())
+                self.logger.error(f'NostrTransport: publish_offer: failed to publish swap offer, timeout, retrying...')
+                await asyncio.sleep(10)
 
 #     @log_exceptions
     async def check_direct_messages(self):
