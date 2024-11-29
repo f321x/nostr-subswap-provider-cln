@@ -22,6 +22,7 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+import sys
 import threading
 import copy
 import json
@@ -307,6 +308,7 @@ class JsonDB:  # (Logger):
 
     @locked
     def add_patch(self, patch):
+        print(f"patch: {patch}", file=sys.stderr)
         self.pending_changes.append(json.dumps(patch, cls=self.encoder))
         self.set_modified(True)
 
