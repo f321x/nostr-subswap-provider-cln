@@ -335,14 +335,16 @@ class CLNLightning:
         self._hold_invoices[invoice.payment_hash.hex()] = invoice
         self._db.write()
 
-    def delete_hold_invoice(self, payment_hash: bytes) -> None:
-        res = self._hold_invoices.pop(payment_hash.hex(), None)
+    def delete_hold_invoice(self, payment_hash: Union[bytes, str]) -> None:
+        if isinstance(payment_hash, bytes):
+            payment_hash = payment_hash.hex()
+        res = self._hold_invoices.pop(payment_hash, None)
         if res is None:
             return
         self._db.write()
 
     def b11invoice_from_hash(self, *,
-            payment_hash: bytes,
+            payment_hash: Union[str, bytes],
             amount_msat: int,
             message: Optional[str] = "",
             expiry: int,  # expiration of invoice (in seconds, relative)
@@ -350,6 +352,8 @@ class CLNLightning:
             min_final_cltv_expiry_delta: Optional[int] = None,
             store_invoice: bool = True) -> HoldInvoice:
         assert amount_msat > 0, f"b11invoice_from_hash: amount_msat must be > 0, but got {amount_msat}"
+        if isinstance(payment_hash, str):
+            payment_hash = bytes.fromhex(payment_hash)
         if len(payment_hash) != 32:
             raise InvalidInvoiceCreationError("b11invoice_from_hash: payment_hash "
                                               "must be 32 bytes, was " + str(len(payment_hash)))
@@ -428,17 +432,16 @@ class CLNLightning:
         # then store the updated invoice with the prepay invoice attached
         self.save_hold_invoice(current_invoice)
 
-    def get_preimage(self, payment_hash: Union[bytes, str]) -> Optional[bytes]:
+    def get_preimage(self, payment_hash: Union[bytes, str]) -> Optional[str]:
         if isinstance(payment_hash, str):
             payment_hash = bytes.fromhex(payment_hash)
         assert len(payment_hash) == 32, f"get_preimage: payment_hash must be 32 bytes, was {len(payment_hash)}"
         preimage_hex = self._preimages.get(payment_hash.hex())
         if preimage_hex is None:
             return None
-        preimage_bytes = bytes.fromhex(preimage_hex)
-        if sha256(preimage_bytes) != payment_hash:
+        if sha256(bytes.fromhex(preimage_hex)) != payment_hash:
             raise InvalidPreimageFoundError("found incorrect preimage for payment_hash")
-        return preimage_bytes
+        return preimage_hex
 
     def num_sats_can_receive(self) -> int:
         """returns max inbound capacity"""

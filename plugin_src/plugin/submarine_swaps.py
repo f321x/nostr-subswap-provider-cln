@@ -6,7 +6,7 @@ import json
 import os
 import math
 from decimal import Decimal
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Union
 import electrum_aionostr as aionostr
 from electrum_ecc import ECPrivkey
 from electrum_aionostr.util import to_nip19
@@ -19,7 +19,7 @@ from .transaction import (PartialTxOutput, PartialTransaction, TxOutpoint,
 from .utils import OldTaskGroup, now, BelowDustLimit, TxBroadcastError
 from .bitcoin import DummyAddress
 from .crypto import ripemd, sha256
-from .lnutil import hex_to_bytes, REDEEM_AFTER_DOUBLE_SPENT_DELAY
+from .lnutil import hex_to_bytes, REDEEM_AFTER_DOUBLE_SPENT_DELAY, bytes_to_hex
 from .invoices import Invoice, HoldInvoice, InvoiceState
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants
@@ -79,10 +79,10 @@ class SwapData(StoredObject):
     locktime = attr.ib(type=int)
     onchain_amount = attr.ib(type=int)  # in sats
     lightning_amount = attr.ib(type=int)  # in sats
-    redeem_script = attr.ib(type=bytes, converter=hex_to_bytes)
-    preimage = attr.ib(type=Optional[bytes], converter=hex_to_bytes)
-    prepay_hash = attr.ib(type=Optional[bytes], converter=hex_to_bytes)
-    privkey = attr.ib(type=bytes, converter=hex_to_bytes)
+    redeem_script = attr.ib(type=str, converter=bytes_to_hex)
+    preimage = attr.ib(type=Optional[str], converter=bytes_to_hex)
+    prepay_hash = attr.ib(type=Optional[str], converter=bytes_to_hex)
+    privkey = attr.ib(type=str, converter=bytes_to_hex)
     lockup_address = attr.ib(type=str)
     receive_address = attr.ib(type=str)
     funding_txid = attr.ib(type=Optional[str])
@@ -94,12 +94,13 @@ class SwapData(StoredObject):
 
     @property
     def payment_hash(self) -> bytes:
-        return self._payment_hash
+        return hex_to_bytes(self._payment_hash)
+
 
 def create_claim_tx(
         *,
         txin: PartialTxInput,
-        witness_script: bytes,
+        witness_script: Union[str, bytes],
         address: str,
         amount_sat: int,
         locktime: int,
@@ -107,6 +108,8 @@ def create_claim_tx(
     """Create tx to either claim successful reverse-swap,
     or to get refunded for timed-out forward-swap.
     """
+    if isinstance(witness_script, str):
+        witness_script = hex_to_bytes(witness_script)
     txin.script_sig = b''
     txin.witness_script = witness_script
     txout = PartialTxOutput.from_address_and_value(address, amount_sat)
@@ -249,7 +252,7 @@ class SwapManager:
         hold_invoice = self.lnworker.get_hold_invoice(swap.payment_hash)
         hold_invoice.settle(swap.preimage)
         if not hold_invoice.funding_status == InvoiceState.SETTLED:
-            self.logger.info(f'hold invoice settling failed: {swap.payment_hash}')
+            self.logger.info(f'hold invoice settling failed: {swap.payment_hash.hex()}')
             return
         self.lnworker.delete_hold_invoice(swap.payment_hash)
         self.lnworker.delete_payment_info(swap.payment_hash)
@@ -319,7 +322,7 @@ class SwapManager:
                     claim_tx = await self.lnwatcher.get_transaction(txin.spent_txid)
                     preimage = claim_tx.inputs()[0].witness_elements()[1]
                     if sha256(preimage) == swap.payment_hash:
-                        swap.preimage = preimage
+                        swap.preimage = preimage.hex()
                         self.logger.info(f'found preimage: {preimage.hex()}')
                         return self._finish_normal_swap(swap)
                         # note: we must check the payment secret before we broadcast the funding tx
@@ -480,11 +483,11 @@ class SwapManager:
         lockup_address = script_to_p2wsh(redeem_script, net=self.config.network)
         receive_address = self.wallet.get_receiving_address()
         swap = SwapData(
-            redeem_script=redeem_script,
+            redeem_script=redeem_script.hex(),
             locktime = locktime,
-            privkey = our_privkey,
+            privkey = our_privkey.hex(),
             preimage = None,
-            prepay_hash = prepay_hash,
+            prepay_hash = prepay_hash.hex(),
             lockup_address = lockup_address,
             onchain_amount = onchain_amount_sat,
             receive_address = receive_address,
@@ -540,11 +543,11 @@ class SwapManager:
         receive_address = self.wallet.get_receiving_address()
         await self.lnwatcher.register_address(lockup_address)
         swap = SwapData(
-            redeem_script = redeem_script,
+            redeem_script = redeem_script.hex(),
             locktime = locktime,
-            privkey = privkey,
-            preimage = preimage,
-            prepay_hash = prepay_hash,
+            privkey = privkey.hex(),
+            preimage = preimage.hex(),
+            prepay_hash = bytes_to_hex(prepay_hash),
             lockup_address = lockup_address,
             onchain_amount = onchain_amount_sat,
             receive_address = receive_address,
@@ -572,7 +575,7 @@ class SwapManager:
         assert swap.lightning_amount == int(invoice.get_amount_sat())
         self.lnworker.save_invoice(invoice)
         # check that we have the preimage
-        assert sha256(swap.preimage) == payment_hash
+        assert sha256(hex_to_bytes(swap.preimage)) == payment_hash
         assert swap.spending_txid is None
         self.invoices_to_pay[key] = 0
         return {}
@@ -691,14 +694,14 @@ class SwapManager:
 
     @classmethod
     def sign_tx(cls, tx: PartialTransaction, swap: SwapData) -> None:
-        preimage = swap.preimage if swap.is_reverse else 0
-        witness_script = swap.redeem_script
+        preimage = hex_to_bytes(swap.preimage) if swap.is_reverse else 0
+        witness_script = hex_to_bytes(swap.redeem_script)
         txin = tx.inputs()[0]
         assert len(tx.inputs()) == 1, f"expected 1 input for swap claim tx. found {len(tx.inputs())}"
         assert txin.prevout.txid.hex() == swap.funding_txid
         txin.script_sig = b''
         txin.witness_script = witness_script
-        sig = tx.sign_txin(0, swap.privkey)
+        sig = tx.sign_txin(0, hex_to_bytes(swap.privkey))
         witness = [sig, preimage, witness_script]
         txin.witness = construct_witness(witness)
 
