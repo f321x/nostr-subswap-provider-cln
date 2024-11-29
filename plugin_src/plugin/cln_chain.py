@@ -57,7 +57,8 @@ class CLNChainWallet:
         # psbt = PartialTransaction().from_tx(signed_tx)._serialize_as_base64()
         # broadcast psbt
         try:
-            self.rpc.sendpsbt(signed_psbt._serialize_as_base64())
+            res = self.rpc.sendpsbt(signed_psbt._serialize_as_base64())
+            self.logger.debug(f"broadcasted tx: {res}")
         except RpcError as e:
             raise TxBroadcastError(e) from e
 
