@@ -82,6 +82,8 @@ class CLNLightning:
                         invoice = self.get_hold_invoice(payment_hash)
 
                         if self.check_invoice_expiry(invoice):
+                            self._logger.warning(f"monitor_expiries: "
+                                                 f"cancelled expired invoice {invoice.payment_hash.hex()}")
                             self._db.write()
 
                         # cancel expired htlcs
