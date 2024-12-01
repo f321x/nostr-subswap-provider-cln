@@ -16,7 +16,7 @@ from .json_db import JsonDB
 from .plugin_config import PluginConfig
 from .constants import MIN_FINAL_CLTV_DELTA_FOR_CLIENT, MIN_FINAL_CLTV_DELTA_ACCEPTED, MIN_FINAL_CLTV_DELTA_FOR_INVOICE
 from .utils import call_blocking_with_timeout, ShortID
-from .lnutil import LnFeatures, filter_suitable_recv_chans
+from .lnutil import LnFeatures, filter_suitable_recv_chans, hex_to_bytes, bytes_to_hex
 from .invoices import HoldInvoice, DuplicateInvoiceCreationError, Htlc, InvoiceState
 from .lnaddr import LnAddr, lnencode_unsigned
 from .bitcoin import COIN
@@ -79,20 +79,39 @@ class CLNLightning:
             try:
                 with self._invoice_lock:
                     for payment_hash in list(self._hold_invoices.keys()):
-                        invoice = self.get_hold_invoice(bytes.fromhex(payment_hash))
-                        # cancel all htlcs and delete invoice if it's expired
-                        # if invoice.created_at + invoice.expiry < time.time() and invoice.funding_status is InvoiceState.UNFUNDED:
-                        #     invoice.cancel_all_htlcs()  # also cancel the prepay invoice!
-                        #     self._hold_invoice_callbacks.pop(invoice.payment_hash)
-                        #     self._hold_invoices.pop(invoice.payment_hash)
-                        #     self._db.write()
+                        invoice = self.get_hold_invoice(payment_hash)
+
+                        if self.check_invoice_expiry(invoice):
+                            self._db.write()
+
                         # cancel expired htlcs
                         if invoice.cancel_expired_htlcs():
                             self._logger.warning(f"cancel_expired_htlcs: cancelled expired htlcs for invoice {invoice.payment_hash}")
                             self.update_invoice(invoice)
-            except Exception as e:
+            except Exception:
                 self._logger.error(f"monitor_expiries loop encountered an error:\n{traceback.format_exc()}")
             time.sleep(10)
+
+    def check_invoice_expiry(self, invoice: HoldInvoice) -> bool:
+        if invoice is None:
+            return False
+        if invoice.associated_invoice is not None:
+            prepay_invoice = self.get_hold_invoice(invoice.associated_invoice)
+
+        # cancel all htlcs and delete invoice if it's expired
+        if (invoice.created_at + invoice.expiry < time.time()
+            and invoice.funding_status != InvoiceState.FUNDED):
+            invoice.cancel_all_htlcs()  # also cancel the prepay invoice!
+
+            if prepay_invoice is not None:
+                prepay_invoice.cancel_all_htlcs()
+                self.update_invoice(prepay_invoice)
+                self._hold_invoices.pop(prepay_invoice.payment_hash.hex())
+
+            self._hold_invoice_callbacks.pop(bytes_to_hex(invoice.payment_hash))
+            self._hold_invoices.pop(bytes_to_hex(invoice.payment_hash))
+            return True
+        return False
 
     def callback_handler(self):
         """Iterate through the hold invoices and call the callback if the invoice is fully funded"""
@@ -144,7 +163,7 @@ class CLNLightning:
             try:
                 if self.handle_htlc(invoice, htlc, onion, request):
                     self.update_invoice(invoice)  # saves the changes to the invoice
-            except Exception as e:
+            except Exception:
                 self._logger.error(f"plugin_htlc_accepted_hook failed:\n{traceback.format_exc()}")
                 return request.set_result({"result": "continue"})
 
