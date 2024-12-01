@@ -13,7 +13,6 @@ from electrum_aionostr.util import to_nip19
 from collections import defaultdict
 
 from .bitcoin import opcodes, dust_threshold, construct_script, script_to_p2wsh, construct_witness
-from .segwit_addr import bech32_encode, Encoding
 from .transaction import (PartialTxOutput, PartialTransaction, TxOutpoint,
                           OPPushDataGeneric, OPPushDataPubkey, PartialTxInput)
 from .utils import OldTaskGroup, now, BelowDustLimit, TxBroadcastError
@@ -159,17 +158,22 @@ class SwapManager:
 
     # @log_exceptions
     async def run_nostr_server(self):
-        with NostrTransport(config=self.config, sm=self) as transport:
-            await transport.is_connected.wait()
-            self.logger.info(f'nostr is connected')
-            while True:
-                # todo: publish everytime fees have changed
-                self.server_update_pairs()
-                await transport.publish_offer(self)
-                if not self.is_initialized.is_set():  # if publish offer didn't set initialized we retry faster
-                    await asyncio.sleep(10)
-                    continue
-                await asyncio.sleep(600)
+        while True:
+            try:
+                with NostrTransport(config=self.config, sm=self) as transport:
+                    await transport.is_connected.wait()
+                    self.logger.info(f'nostr is connected')
+                    while True:
+                        # todo: publish everytime fees have changed
+                        self.server_update_pairs()
+                        await transport.publish_offer(self)
+                        if not self.is_initialized.is_set():  # if publish offer didn't set initialized we retry faster
+                            await asyncio.sleep(10)
+                            continue
+                        await asyncio.sleep(600)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"Nostr timeout, restarting Nostr module")
+            await asyncio.sleep(15)
 
     async def main_loop(self):
         if self.is_initialized.is_set():
@@ -180,10 +184,7 @@ class SwapManager:
                 continue
             self.add_lnwatcher_callback(swap)
 
-        tasks = [self.pay_pending_ln_invoices()]
-        if self.is_server:
-            if self.use_nostr:
-                tasks.append(self.run_nostr_server())
+        tasks = [self.pay_pending_ln_invoices(), self.run_nostr_server()]
 
         async with self.taskgroup as group:
             for task in tasks:
@@ -822,8 +823,8 @@ class NostrTransport:  # (Logger):
         self.nostr_pubkey = keypair.pubkey.hex()[2:]
         self.dm_replies = defaultdict(asyncio.Future)  # type: Dict[bytes, asyncio.Future]
         self.relay_manager = aionostr.Manager(self.relays, private_key=self.nostr_private_key)
-        self.taskgroup = OldTaskGroup()
         self.is_connected = asyncio.Event()
+        self.taskgroup = OldTaskGroup()
         # self.server_relays = None
 
     def __enter__(self):
@@ -835,20 +836,14 @@ class NostrTransport:  # (Logger):
 
 #     @log_exceptions
     async def main_loop(self):
+        assert self.sm.is_server, "This is a CLN plugin and should always run as server"
         self.logger.info(f'starting nostr transport with pubkey: {self.nostr_pubkey}')
         self.logger.info(f'nostr relays: {self.relays}')
         await self.relay_manager.connect()
         self.is_connected.set()
-        if self.sm.is_server:
-            tasks = [
-                self.check_direct_messages(),
-            ]
-        else:
-            raise Exception('This is a CLN plugin and should always run as server')
         try:
             async with self.taskgroup as group:
-                for task in tasks:
-                    await group.spawn(task)
+                await group.spawn(self.check_direct_messages())
         except Exception:
             self.logger.error(f"Nostr taskgroup died. {traceback.format_exc()}")
         finally:
@@ -857,8 +852,11 @@ class NostrTransport:  # (Logger):
     async def stop(self):
         self.logger.info("shutting down nostr transport")
         self.sm.is_initialized.clear()
-        await self.taskgroup.cancel_remaining()
-        await self.relay_manager.close()
+        try:
+            await self.taskgroup.cancel_remaining()
+            await self.relay_manager.close()
+        except Exception as e:
+            pass
 
 #     @log_exceptions
     async def publish_offer(self, sm):
@@ -877,20 +875,13 @@ class NostrTransport:  # (Logger):
         }
         self.logger.info(f'publishing swap offer..')
         self.logger.debug(f'offer: {offer}')
-        while True:  # try to publish until we don't timeout or get another exception
-            try:
-                event_id = await aionostr._add_event(
-                    self.relay_manager,
-                    kind=self.NOSTR_SWAP_OFFER,
-                    content=json.dumps(offer),
-                    private_key=self.nostr_private_key)
-                self.logger.debug(f'published swap offer: {event_id}')
-                sm.is_initialized.set()
-                break
-            except asyncio.exceptions.TimeoutError:
-                self.logger.debug(traceback.format_exc())
-                self.logger.error(f'NostrTransport: publish_offer: failed to publish swap offer, timeout, retrying...')
-                await asyncio.sleep(10)
+        event_id = await aionostr._add_event(
+            self.relay_manager,
+            kind=self.NOSTR_SWAP_OFFER,
+            content=json.dumps(offer),
+            private_key=self.nostr_private_key)
+        self.logger.debug(f'published swap offer: {event_id}')
+        sm.is_initialized.set()
 
 #     @log_exceptions
     async def check_direct_messages(self):
