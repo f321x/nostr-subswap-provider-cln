@@ -202,8 +202,8 @@ class BitcoinCoreRPC:
 
         # get all transactions that spent to the address
         try:  # minconf, include_empty, include_watchonly, address_filter, include_immature_cb
-            received = json.loads(await self.iface.acall(method="listreceivedbyaddress",
-                                              params=[1, True, True, address, False]))
+            received = await self.iface.acall(method="listreceivedbyaddress",
+                                              params=[1, True, True, address, False])
             utxos = await self.iface.acall(method="listunspent",
                                            params=[1, 9999999, [address]])
         except Exception:
