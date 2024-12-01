@@ -95,15 +95,15 @@ class CLNLightning:
     def check_invoice_expiry(self, invoice: HoldInvoice) -> bool:
         if invoice is None:
             return False
-        if invoice.associated_invoice is not None:
-            prepay_invoice = self.get_hold_invoice(invoice.associated_invoice)
 
         # cancel all htlcs and delete invoice if it's expired
         if (invoice.created_at + invoice.expiry < time.time()
-            and invoice.funding_status != InvoiceState.FUNDED):
+            and invoice.funding_status not in [InvoiceState.FUNDED, InvoiceState.SETTLED]):
+            self._logger.warning(f"check_invoice_expiry: cancelling expired invoice {invoice.payment_hash.hex()}")
             invoice.cancel_all_htlcs()  # also cancel the prepay invoice!
 
-            if prepay_invoice is not None:
+            if invoice.associated_invoice is not None:
+                prepay_invoice = self.get_hold_invoice(invoice.associated_invoice)
                 prepay_invoice.cancel_all_htlcs()
                 self.update_invoice(prepay_invoice)
                 self._hold_invoices.pop(prepay_invoice.payment_hash.hex())
