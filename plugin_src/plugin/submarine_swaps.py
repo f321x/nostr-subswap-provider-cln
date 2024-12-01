@@ -852,11 +852,12 @@ class NostrTransport:  # (Logger):
     async def stop(self):
         self.logger.info("shutting down nostr transport")
         self.sm.is_initialized.clear()
-        try:
-            await self.taskgroup.cancel_remaining()
-            await self.relay_manager.close()
-        except Exception as e:
-            pass
+        # trying to gracefully shut down what's left of the NostrTransport
+        for coro in [self.relay_manager.close, self.taskgroup.cancel_remaining]:
+            try:
+                await coro()
+            except Exception:
+                pass
 
 #     @log_exceptions
     async def publish_offer(self, sm):
