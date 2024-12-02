@@ -34,7 +34,7 @@ class ChainMonitor(BitcoinCoreRPC):
 
     async def trigger_callbacks(self) -> None:
         """Trigger all callbacks for monitored addresses"""
-        for callback in self.callbacks.values():
+        for callback in list(self.callbacks.values()):
             try:
                 await callback()
             except Exception as e:
