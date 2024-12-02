@@ -46,4 +46,4 @@ class ChainMonitor(BitcoinCoreRPC):
 
     def remove_callback(self, lookup_address) -> None:
         self._logger.debug(f"ChainMonitor: Removing callback for address {lookup_address}")
-        self.callbacks.pop(lookup_address)
+        self.callbacks.pop(lookup_address, None)

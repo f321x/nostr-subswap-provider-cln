@@ -13,13 +13,13 @@ from electrum_aionostr.util import to_nip19
 from collections import defaultdict
 
 from .bitcoin import opcodes, dust_threshold, construct_script, script_to_p2wsh, construct_witness
-from .transaction import (PartialTxOutput, PartialTransaction, TxOutpoint,
+from .transaction import (PartialTxOutput, PartialTransaction, TxOutpoint, Transaction,
                           OPPushDataGeneric, OPPushDataPubkey, PartialTxInput)
 from .utils import OldTaskGroup, now, BelowDustLimit, TxBroadcastError
 from .bitcoin import DummyAddress
 from .crypto import ripemd, sha256
 from .lnutil import hex_to_bytes, REDEEM_AFTER_DOUBLE_SPENT_DELAY, bytes_to_hex
-from .invoices import Invoice, HoldInvoice, InvoiceState
+from .invoices import Invoice, InvoiceState
 from .json_db import StoredObject, stored_in, JsonDB
 from . import constants
 from .constants import (MIN_LOCKTIME_DELTA, LOCKTIME_DELTA_REFUND, MAX_LOCKTIME_DELTA,
@@ -184,7 +184,9 @@ class SwapManager:
                 continue
             self.add_lnwatcher_callback(swap)
 
-        tasks = [self.pay_pending_ln_invoices(), self.run_nostr_server()]
+        tasks = [self.pay_pending_ln_invoices(),
+                 self.run_nostr_server(),
+                 self.lnwatcher.trigger_callbacks()]
 
         async with self.taskgroup as group:
             for task in tasks:
@@ -358,10 +360,6 @@ class SwapManager:
                         self.invoices_to_pay[key] = 0
                     return
 
-                # if self.network.config.TEST_SWAPSERVER_REFUND:
-                    # for testing: do not create claim tx
-                    # return
-
             if spent_height is not None and not should_bump_fee:
                 return
             try:
@@ -369,14 +367,15 @@ class SwapManager:
             except BelowDustLimit:
                 self.logger.info('utxo value below dust threshold')
                 return
-            self.logger.info(f'adding claim tx {tx.txid()}')
-            # self.wallet.adb.add_transaction(tx)
             swap.spending_txid = tx.txid()
             if funding_height.conf > 0: # or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
                 try:
+                    self.logger.info(f'spending claim tx {tx.txid()}: '
+                                     f'\nPSBT: {tx._serialize_as_base64()}'
+                                     f'\nTX_RAW: {Transaction.serialize(tx)}')
                     self.wallet.broadcast_transaction(tx)
                 except TxBroadcastError:
-                    self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
+                    self.logger.error(f'error broadcasting claim tx {txin.spent_txid}. Report bug on github.')
 
     def get_claim_fee(self):
         return self.get_fee(size_vb=CLAIM_FEE_SIZE)
@@ -394,15 +393,12 @@ class SwapManager:
         if key in self.swaps:
             swap = self.swaps[key]
             if swap.funding_txid is None:
-                # password = self.wallet.get_unlocked_password()
-                # for batch_rbf in [True, False]:
-                tx = self.create_funding_tx(swap=swap, tx=None)
-                # try:
-                self.broadcast_funding_tx(swap, tx)
-                # except TxBroadcastError:
-                #     continue
-                # break
-
+                tx = self.create_funding_tx(swap=swap)
+                try:
+                    self.broadcast_funding_tx(swap, tx)
+                except Exception as e:
+                    self.logger.error(f'broadcast funding tx failed: {e}')
+                    self._fail_swap(swap, 'broadcast funding tx failed')
 
     async def create_normal_swap(self, *, lightning_amount_sat: int, payment_hash: bytes, their_pubkey: bytes = None):
         """ server method """
@@ -578,22 +574,14 @@ class SwapManager:
         self,
         *,
         swap: SwapData,
-        tx: Optional[PartialTransaction],
-        # *,
-        # password,
-        # batch_rbf: Optional[bool] = None,
     ) -> PartialTransaction:
         # create funding tx
         # note: rbf must not decrease payment
-        # this is taken care of in wallet._is_rbf_allowed_to_touch_tx_output
-        if tx is None:
-            funding_output = PartialTxOutput.from_address_and_value(swap.lockup_address, swap.onchain_amount)
-            tx = self.wallet.create_transaction(
-                outputs_without_change=[funding_output],
-                rbf=True,
-            )
-        else:
-            raise NotImplementedError
+        funding_output = PartialTxOutput.from_address_and_value(swap.lockup_address, swap.onchain_amount)
+        tx = self.wallet.create_transaction(
+            outputs_without_change=[funding_output],
+            rbf=True,
+        )
         return tx
 
 #     @log_exceptions
@@ -723,6 +711,7 @@ class SwapManager:
             locktime=locktime,
         )
         self.sign_tx(tx, swap)
+        tx.finalize_psbt()
         return tx
 
     async def server_create_normal_swap(self, request):
