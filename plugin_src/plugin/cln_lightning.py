@@ -84,7 +84,7 @@ class CLNLightning:
                         if self.check_invoice_expiry(invoice):
                             self._logger.warning(f"monitor_expiries: "
                                                  f"cancelled expired invoice {invoice.payment_hash.hex()}")
-                            self._db.write()
+                            break
 
                         # cancel expired htlcs
                         if invoice.cancel_expired_htlcs():
@@ -95,6 +95,7 @@ class CLNLightning:
             time.sleep(10)
 
     def check_invoice_expiry(self, invoice: HoldInvoice) -> bool:
+        """Check if the invoice is expired and cancel it if it is, also checks associated prepay invoice"""
         if invoice is None:
             return False
 
@@ -107,11 +108,9 @@ class CLNLightning:
             if invoice.associated_invoice is not None:
                 prepay_invoice = self.get_hold_invoice(invoice.associated_invoice)
                 prepay_invoice.cancel_all_htlcs()
-                self.update_invoice(prepay_invoice)
-                self._hold_invoices.pop(prepay_invoice.payment_hash.hex())
+                self.delete_hold_invoice(prepay_invoice.payment_hash)
 
-            self._hold_invoice_callbacks.pop(bytes_to_hex(invoice.payment_hash))
-            self._hold_invoices.pop(bytes_to_hex(invoice.payment_hash))
+            self.delete_hold_invoice(invoice.payment_hash)
             return True
         return False
 
@@ -349,7 +348,7 @@ class CLNLightning:
         """Used to unregister the swap invoice from the callback manager"""
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
-        self._hold_invoice_callbacks.pop(payment_hash)
+        self._hold_invoice_callbacks.pop(payment_hash, None)
 
     def save_hold_invoice(self, invoice: HoldInvoice) -> None:
         """Saves a hold invoice to the db"""
@@ -359,6 +358,7 @@ class CLNLightning:
     def delete_hold_invoice(self, payment_hash: Union[bytes, str]) -> None:
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
+        self.unregister_hold_invoice_callback(payment_hash)
         res = self._hold_invoices.pop(payment_hash, None)
         if res is None:
             return
