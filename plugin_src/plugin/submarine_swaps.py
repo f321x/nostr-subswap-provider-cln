@@ -246,6 +246,7 @@ class SwapManager:
         self.lnwatcher.remove_callback(swap.lockup_address)
         if swap.funding_txid is None:
             self.swaps.pop(swap.payment_hash.hex())
+        self.db.write()
 
     def _finish_normal_swap(self, swap: SwapData):
         self.logger.info(f'finishing normal swap {swap.payment_hash.hex()}')
@@ -259,6 +260,7 @@ class SwapManager:
         self.lnworker.delete_payment_info(swap.payment_hash)
         self.lnwatcher.remove_callback(swap.lockup_address)
         self.swaps.pop(swap.payment_hash.hex())
+        self.db.write()
 
     # @log_exceptions
     async def _claim_swap(self, swap: SwapData) -> None:

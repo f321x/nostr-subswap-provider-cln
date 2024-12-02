@@ -117,6 +117,7 @@ class CLNLightning:
     def callback_handler(self):
         """Iterate through the hold invoices and call the callback if the invoice is fully funded"""
         while True:
+            time.sleep(5)
             try:
                 for payment_hash, callback in list(self._hold_invoice_callbacks.items()):
                     with self._invoice_lock:
@@ -147,7 +148,6 @@ class CLNLightning:
 
             except Exception as e:
                 self._logger.error(f"callback_handler encountered an error:\n{traceback.format_exc()}")
-            time.sleep(5)
 
     def plugin_htlc_accepted_hook(self, onion, htlc, request, plugin, *args, **kwargs) -> None:
         if "forward_to" in kwargs:  # ignore forwards
