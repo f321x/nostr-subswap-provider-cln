@@ -237,14 +237,14 @@ class SwapManager:
         if not swap.is_reverse and swap.payment_hash in self.lnworker._hold_invoice_callbacks:
             self.lnworker.unregister_hold_invoice_callback(swap.payment_hash)
             for payment_hash in [swap.payment_hash, swap.prepay_hash]:
-                # prepay hash is probably already settled at this point
+                # prepay hash should already be settled at this point
                 invoice = self.lnworker.get_hold_invoice(payment_hash)
                 if invoice:
                     invoice.cancel_all_htlcs()
                     self.lnworker.delete_hold_invoice(payment_hash)
                 self.lnworker.delete_payment_info(payment_hash)
         self.lnwatcher.remove_callback(swap.lockup_address)
-        if swap.funding_txid is None:
+        if swap.funding_txid is None or swap.is_redeemed:
             self.swaps.pop(swap.payment_hash.hex())
         self.db.write()
 
@@ -269,7 +269,7 @@ class SwapManager:
             self.logger.warning('_claim_swap caled but core node not up to date, skipping')
             return
         current_height = await self.wallet.get_local_height()
-        remaining_time = swap.locktime - current_height
+        remaining_time = 0 # swap.locktime - current_height
         txos = await self.lnwatcher.get_addr_outputs(swap.lockup_address)
 
         self.logger.debug(f'_claim_swap lockup addr: {swap.lockup_address} found {len(txos)} txout spending to it')
@@ -301,27 +301,9 @@ class SwapManager:
             if spent_height is not None:
                 swap.spending_txid = txin.spent_txid
                 if spent_height > 0 and current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
-                        self.logger.info(f'stop watching swap {swap.lockup_address}')
-                        self.lnwatcher.remove_callback(swap.lockup_address)
-                        swap.is_redeemed = True
-
-                    # if current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
-                # else:
-                    # spending tx is in mempool
-                    # pass
-                # elif spent_height == TX_HEIGHT_LOCAL:
-                #     if funding_height.conf > 0 or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
-                #         tx = self.lnwatcher.adb.get_transaction(txin.spent_txid)
-                #         try:
-                #             await self.network.broadcast_transaction(tx)
-                #         except TxBroadcastError:
-                #             self.logger.info(f'error broadcasting claim tx {txin.spent_txid}')
-                #     elif funding_height.height == TX_HEIGHT_LOCAL:
-                #         # the funding tx was double spent.
-                #         # this will remove both funding and child (spending tx) from adb
-                #         self.lnwatcher.adb.remove_transaction(swap.funding_txid)
-                #         swap.funding_txid = None
-                #         swap.spending_txid = None
+                    self.logger.info(f'stop watching swap {swap.lockup_address}')
+                    swap.is_redeemed = True
+                    self._fail_swap(swap, 'claimed back after timeout')
 
             if not swap.is_reverse:
                 if swap.preimage is None and spent_height is not None:
