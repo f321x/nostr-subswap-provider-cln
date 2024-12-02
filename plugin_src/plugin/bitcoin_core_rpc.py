@@ -220,12 +220,15 @@ class BitcoinCoreRPC:
             funding_inputs.append(await self._utxo_to_partial_txin(utxo))
         unspent_amount_sat = sum([utxo.value_sats() for utxo in funding_inputs])
         spent_amount = int(float(received[0]['amount']) * 10**8) - unspent_amount_sat
+        self._logger.debug(f"ChainMonitor: get_addr_outputs: Address {address} has "
+                           f"{unspent_amount_sat} unspent sats and {spent_amount} spent sats")
         if spent_amount > 0:  # nothing received to the address has been spent yet
             # at least some utxos have been spent again already, so we have to fetch the spending txs
             spent_utxos = await self._fetch_spent_utxos(received_txids, spent_amount, address)
             if spent_amount - sum([utxo.value_sats() for utxo in spent_utxos]) > 0:
                 raise UtxosNotFoundError(f"ChainMonitor: get_addr_outputs: "
                                            f"Could not find all spent utxos for {address}")
+            funding_inputs.extend(spent_utxos)
         return funding_inputs
 
     async def _utxo_to_partial_txin(self, utxo: dict) -> PartialTxInput:
@@ -248,9 +251,9 @@ class BitcoinCoreRPC:
         # we look for the spending transactions and deduct the amount once found
         while spent_amount_sat > 0:
             try:
-                wallet_txs = json.loads(await self.iface.acall(method="listwallettransactions",
+                wallet_txs = await self.iface.acall(method="listtransactions",
                                                     params=["*", fetch_txs, fetch_txs - 1, True],
-                                                    timeout=HttpxTimeout(5)))
+                                                    timeout=HttpxTimeout(5))
             except Exception as e:
                 raise BitcoinCoreRPCError(f"ChainMonitor: _fetch_spent_utxos: Could not get wallet transactions: {e}")
             fetch_txs += 1
