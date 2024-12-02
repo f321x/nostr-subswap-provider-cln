@@ -60,7 +60,7 @@ class CLNChainWallet:
             res = self.rpc.sendpsbt(signed_psbt._serialize_as_base64())
             self.logger.debug(f"broadcasted tx: {res}")
         except RpcError as e:
-            raise TxBroadcastError(e) from e
+            raise TxBroadcastError(e)
 
     async def get_local_height(self, retries_30sec: int = 20) -> int:
         """Returns the current block height of the cln backend."""
