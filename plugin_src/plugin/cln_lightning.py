@@ -181,7 +181,8 @@ class CLNLightning:
         htlc = Htlc.from_cln_dict(incoming_htlc, request)
         if (existing := target_invoice.find_htlc(htlc)) is not None:
             existing.add_new_htlc_callback(request)
-            self._logger.debug(f"handle_htlc: registering new callback for existing htlc invoice: {target_invoice.payment_hash.hex()}")
+            self._logger.debug(f"handle_htlc: registering new cln callback for existing htlc, "
+                               f"targeted invoice: {target_invoice.payment_hash.hex()}")
             return False # we already received this htlc and don't have to store it again (e.g. after replay when restarting)
         else:
             # add the htlc to the invoice
@@ -358,6 +359,7 @@ class CLNLightning:
     def delete_hold_invoice(self, payment_hash: Union[bytes, str]) -> None:
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
+        self._logger.debug(f"delete_hold_invoice: {payment_hash}")
         self.unregister_hold_invoice_callback(payment_hash)
         res = self._hold_invoices.pop(payment_hash, None)
         if res is None:

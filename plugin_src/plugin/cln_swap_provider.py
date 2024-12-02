@@ -47,7 +47,7 @@ class CLNSwapProvider:
         storage = CLNStorage(db_string_writer=self.plugin_handler.plugin.rpc.datastore,
                              db_string_reader=self.plugin_handler.plugin.rpc.listdatastore,
                              logger=self.logger)
-        storage.wipe()
+        # storage.wipe()
         self.json_db = JsonDB(s=storage.read(), storage=storage, logger=self.logger)
 
 

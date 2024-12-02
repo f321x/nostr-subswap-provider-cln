@@ -270,6 +270,7 @@ class SwapManager:
         remaining_time = swap.locktime - current_height
         txos = await self.lnwatcher.get_addr_outputs(swap.lockup_address)
 
+        self.logger.debug(f'_claim_swap lockup addr: {swap.lockup_address} found {len(txos)} txout spending to it')
         for txin in txos:
             if swap.is_reverse and txin.value_sats() < swap.onchain_amount:
                 # amount too low, we must not reveal the preimage
@@ -284,6 +285,7 @@ class SwapManager:
                 self._fail_swap(swap, 'expired')
 
         if txin:
+            self.logger.debug(f'claim_swap found funding tx {txin.prevout.txid.hex()}')
             # the swap is funded
             # note: swap.funding_txid can change due to RBF, it will get updated here:
             swap.funding_txid = txin.prevout.txid.hex()
@@ -292,6 +294,8 @@ class SwapManager:
             funding_height = await self.lnwatcher.get_tx_height(txin.prevout.txid.hex())
             spent_height = txin.spent_height
             should_bump_fee = False
+            self.logger.debug(f"claim_swap: Swap funding output has been spent at height "
+                              f"{spent_height} in tx {txin.spent_txid}")
             if spent_height is not None:
                 swap.spending_txid = txin.spent_txid
                 if spent_height > 0 and current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
@@ -322,6 +326,7 @@ class SwapManager:
                     # extract the preimage, add it to lnwatcher
                     claim_tx = await self.lnwatcher.get_transaction(txin.spent_txid)
                     preimage = claim_tx.inputs()[0].witness_elements()[1]
+                    self.logger.debug(f"claim swap extracted preimage: {preimage.hex()} for {swap.lockup_address}")
                     if sha256(preimage) == swap.payment_hash:
                         swap.preimage = preimage.hex()
                         self.logger.info(f'found preimage: {preimage.hex()}')
@@ -342,10 +347,14 @@ class SwapManager:
 
                 if remaining_time > 0:
                     # too early for refund
+                    self.logger.debug(f'claim_swap: remaining time {remaining_time} for {swap.lockup_address},'
+                                      f'too early for refund')
                     return
 
                 if swap.preimage:
                     # we have been paid. do not try to get refund.
+                    self.logger.debug(f"claim_swap: we have been paid for {swap.lockup_address}, "
+                                      f"not trying to get refund")
                     return
 
             else:
