@@ -271,7 +271,7 @@ class SwapManager:
             self.logger.warning('_claim_swap caled but core node not up to date, skipping')
             return
         current_height = await self.wallet.get_local_height()
-        remaining_time = 0 # swap.locktime - current_height
+        remaining_time = swap.locktime - current_height
         txos = await self.lnwatcher.get_addr_outputs(swap.lockup_address)
 
         self.logger.debug(f'_claim_swap lockup addr: {swap.lockup_address} found {len(txos)} txout spending to it')
