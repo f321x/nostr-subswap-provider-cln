@@ -737,7 +737,7 @@ class SwapManager:
             "expectedAmount": swap.onchain_amount,
             "timeoutBlockHeight": swap.locktime,
             "address": swap.lockup_address,
-            "redeemScript": swap.redeem_script.hex(),
+            "redeemScript": swap.redeem_script,
         }
         return response
 
