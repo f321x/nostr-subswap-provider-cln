@@ -24,7 +24,7 @@ DUST_LIMIT_MAX = 1000
 
 
 hex_to_bytes = lambda v: v if isinstance(v, bytes) else bytes.fromhex(v) if v is not None else None
-bytes_to_hex = lambda v: v if isinstance(v, str) else repr(v.hex()) if v is not None else None
+bytes_to_hex = lambda v: v if isinstance(v, str) else v.hex() if v is not None else None
 json_to_keypair = lambda v: v if isinstance(v, OnlyPubkeyKeypair) else Keypair(**v) if len(v)==2 else OnlyPubkeyKeypair(**v)
 
 

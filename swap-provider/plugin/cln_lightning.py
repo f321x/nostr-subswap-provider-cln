@@ -231,6 +231,7 @@ class CLNLightning:
         return True
 
     async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
+        self._logger.debug("pay_invoice: " + bolt11)
         try:  # first check if payment was already initiated earlier
             existing_pay_req = self._rpc.listpays(bolt11=bolt11)
             if existing_pay_req['status'] == 'complete':
@@ -247,6 +248,7 @@ class CLNLightning:
         except Exception as e:
             return False, "pay_invoice call to CLN failed: " + str(e)
 
+        self._logger.debug(f"pay_invoice call result: {result}")
         if 'payment_preimage' in result and result['payment_preimage'] and result['status'] == 'complete':
             return True, result['payment_preimage']
         return False, result
