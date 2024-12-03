@@ -92,7 +92,6 @@ def all_subclasses(cls) -> Set:
 async def call_blocking_with_timeout(func, *args, timeout: int) -> Any:
     return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=timeout)
 
-
 def parse_max_spend(amt: Any) -> Optional[int]:
     """Checks if given amount is "spend-max"-like.
     Returns None or the positive integer weight for "max". Never raises.

@@ -142,7 +142,7 @@ class SwapManager:
         self._swaps_by_lockup_address = {}  # type: Dict[str, SwapData]
         for payment_hash_hex, swap in self.swaps.items():
             payment_hash = bytes.fromhex(payment_hash_hex)
-            swap._payment_hash = payment_hash
+            swap._payment_hash = payment_hash_hex
             self._add_or_reindex_swap(swap)
             if not swap.is_reverse and not swap.is_redeemed:
                 self.lnworker.register_hold_invoice_callback(payment_hash=payment_hash, callback=self.hold_invoice_callback)
@@ -184,9 +184,11 @@ class SwapManager:
                 continue
             self.add_lnwatcher_callback(swap)
 
-        tasks = [self.pay_pending_ln_invoices(),
-                 self.run_nostr_server(),
-                 self.lnwatcher.trigger_callbacks()]
+        tasks = [
+                self.lnwatcher.trigger_callbacks(),  # trigger all callbacks once
+                self.pay_pending_ln_invoices(),
+                self.run_nostr_server()
+                ]
 
         async with self.taskgroup as group:
             for task in tasks:
@@ -210,8 +212,8 @@ class SwapManager:
         self.logger.debug(f'trying to pay invoice {key}')
         self.invoices_to_pay[key] = 1000000000000 # lock
         try:
-            invoice = self.lnworker.get_invoice(key)
-            success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=10)
+            invoice = self.lnworker.get_invoice(key)  # TODO: use sendpay
+            # success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=1)
         except Exception as e:
             self.logger.info(f'exception paying {key}, will not retry')
             self.invoices_to_pay.pop(key, None)
@@ -489,7 +491,7 @@ class SwapManager:
             funding_txid = None,
             spending_txid = None,
         )
-        swap._payment_hash = payment_hash
+        swap._payment_hash = bytes_to_hex(payment_hash)
         self._add_or_reindex_swap(swap)
         await self.lnwatcher.register_address(lockup_address)  # adds the address to the bcore wallet
         self.add_lnwatcher_callback(swap)
@@ -514,7 +516,7 @@ class SwapManager:
             privkey=privkey,
             preimage=preimage,
             payment_hash=payment_hash,
-            prepay_hash=None,
+            prepay_hash=None,  # server doesn't prepay
             onchain_amount_sat=onchain_amount_sat,
             lightning_amount_sat=lightning_amount_sat)
         return swap
@@ -535,10 +537,10 @@ class SwapManager:
         receive_address = self.wallet.get_receiving_address()
         await self.lnwatcher.register_address(lockup_address)
         swap = SwapData(
-            redeem_script = redeem_script.hex(),
+            redeem_script = bytes_to_hex(redeem_script),
             locktime = locktime,
-            privkey = privkey.hex(),
-            preimage = preimage.hex(),
+            privkey = bytes_to_hex(privkey),
+            preimage = bytes_to_hex(preimage),
             prepay_hash = bytes_to_hex(prepay_hash),
             lockup_address = lockup_address,
             onchain_amount = onchain_amount_sat,
@@ -551,7 +553,7 @@ class SwapManager:
         )
         if prepay_hash:
             self.prepayments[prepay_hash] = payment_hash
-        swap._payment_hash = payment_hash
+        swap._payment_hash = bytes_to_hex(payment_hash)
         self._add_or_reindex_swap(swap)
 
         self.add_lnwatcher_callback(swap)
