@@ -259,6 +259,8 @@ class SwapManager:
             self.logger.info(f'hold invoice settling failed: {swap.payment_hash.hex()}')
             return
         self.lnworker.delete_hold_invoice(swap.payment_hash)
+        if swap.prepay_hash:
+            self.lnworker.delete_hold_invoice(swap.prepay_hash)
         self.lnworker.delete_payment_info(swap.payment_hash)
         self.lnwatcher.remove_callback(swap.lockup_address)
         self.swaps.pop(swap.payment_hash.hex())
