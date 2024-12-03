@@ -2,13 +2,13 @@ import traceback
 
 import attr
 from bitcoinrpc import BitcoinRPC, RPCError as BitcoinRPCError
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 from httpx import Timeout as HttpxTimeout
-import json
 import asyncio
 import time
 
 from .cln_logger import PluginLogger
+from .lnutil import bytes_to_hex
 from .transaction import Transaction, PartialTxInput, TxOutpoint
 from .utils import TxMinedInfo, descsum_create
 
@@ -282,6 +282,16 @@ class BitcoinCoreRPC:
                         spent_utxos.append(await self._utxo_to_partial_txin(utxo))
                         spent_amount_sat -= spent_output.value
         return spent_utxos
+
+    async def broadcast_raw_transaction(self, raw_tx: Union[bytes, str]) -> str:
+        """Broadcast a raw transaction to the network"""
+        raw_tx = bytes_to_hex(raw_tx)
+        try:
+            txid = await self.iface.acall(method="sendrawtransaction", params=[raw_tx], timeout=HttpxTimeout(5))
+            return txid
+        except BitcoinRPCError as e:
+            raise BitcoinCoreRPCError(f"ChainMonitor: broadcast_raw_transaction: "
+                                      f"Could not broadcast transaction {raw_tx}:\n{e}")
 
 
 @attr.s(frozen=True, auto_attribs=True, kw_only=True)
