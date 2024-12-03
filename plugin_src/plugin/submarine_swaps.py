@@ -370,10 +370,10 @@ class SwapManager:
             swap.spending_txid = tx.txid()
             if funding_height.conf > 0: # or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
                 try:
-                    self.logger.info(f'spending claim tx {tx.txid()}: '
-                                     f'\nPSBT: {tx._serialize_as_base64()}'
+                    self.logger.debug(f'spending claim tx {tx.txid()}: '
                                      f'\nTX_RAW: {Transaction.serialize(tx)}')
-                    self.wallet.broadcast_transaction(tx)
+                    txid = await self.lnwatcher.broadcast_raw_transaction(Transaction.serialize(tx))
+                    self.logger.info(f'broadcasted refund claim tx {txid}')
                 except TxBroadcastError:
                     self.logger.error(f'error broadcasting claim tx {txin.spent_txid}. Report bug on github.')
 
