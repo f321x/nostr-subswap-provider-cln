@@ -80,16 +80,10 @@ class CLNLightning:
                 with self._invoice_lock:
                     for payment_hash in list(self._hold_invoices.keys()):
                         invoice = self.get_hold_invoice(payment_hash)
-
                         if self.check_invoice_expiry(invoice):
                             self._logger.warning(f"monitor_expiries: "
                                                  f"cancelled expired invoice {invoice.payment_hash.hex()}")
                             break
-
-                        # cancel expired htlcs
-                        if invoice.cancel_expired_htlcs():
-                            self._logger.warning(f"cancel_expired_htlcs: cancelled expired htlcs for invoice {invoice.payment_hash}")
-                            self.update_invoice(invoice)
             except Exception:
                 self._logger.error(f"monitor_expiries loop encountered an error:\n{traceback.format_exc()}")
             time.sleep(10)

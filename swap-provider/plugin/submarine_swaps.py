@@ -212,7 +212,7 @@ class SwapManager:
         self.logger.debug(f'trying to pay invoice {key}')
         self.invoices_to_pay[key] = 1000000000000 # lock
         try:
-            invoice = self.lnworker.get_invoice(key)  # TODO: use sendpay
+            invoice = self.lnworker.get_invoice(key)  # use sendpay
             # success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=1)
         except Exception as e:
             self.logger.info(f'exception paying {key}, will not retry')
