@@ -36,7 +36,7 @@ reckless source add https://github.com/f321x/nostr-subswap-provider-cln
 
 Then you can install the plugin:
 ```bash
-reckless install nostr-subswap-provider-cln
+reckless install swap-provider
 ```
 
 ### <u>Configuration</u>
