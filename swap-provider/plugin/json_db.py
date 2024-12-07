@@ -22,7 +22,6 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-import sys
 import threading
 import copy
 import json
@@ -223,10 +222,11 @@ class JsonDB:  # (Logger):
         *,
         s: str,
         storage: CLNStorage,
-        logger: PluginLogger
+        logger: PluginLogger,
     ):
         # Logger.__init__(self)
         self.logger = logger
+        self.human_readable = True if logger.level == "DEBUG" else False
         self.lock = threading.RLock()
         self.storage = storage
         self.encoder = None
@@ -418,7 +418,7 @@ class JsonDB:  # (Logger):
             raise Exception('daemon thread cannot write db')
         if not self.modified():
             return
-        json_str = self.dump(human_readable=True)  # we don't encrypt in this plugin
+        json_str = self.dump(human_readable=self.human_readable)  # we don't encrypt in this plugin
         self.storage.write(json_str)
         self.pending_changes = []
         self.set_modified(False)
