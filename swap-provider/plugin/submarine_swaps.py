@@ -213,11 +213,12 @@ class SwapManager:
         self.invoices_to_pay[key] = 1000000000000 # lock
         try:
             invoice = self.lnworker.get_invoice(key)  # use sendpay
-            success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=1)
-        except Exception as e:
-            self.logger.info(f'exception paying {key}, will not retry')
+            success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=5)
+        except Exception:
+            self.logger.info(f'exception paying {key}: {traceback.format_exc()}, will not retry')
             self.invoices_to_pay.pop(key, None)
             self.lnworker.delete_invoice(key)
+            self._fail_swap(self.swaps[key], 'exception paying invoice')
             return
         if not success:
             self.logger.info(f'failed to pay pending invoice {key}: {log}, will retry in 10 minutes')
@@ -247,6 +248,8 @@ class SwapManager:
                     invoice.cancel_all_htlcs()
                     self.lnworker.delete_hold_invoice(payment_hash)
                 self.lnworker.delete_payment_info(payment_hash)
+        else:
+            self.lnworker.delete_invoice(swap.payment_hash)
         self.lnwatcher.remove_callback(swap.lockup_address)
         if swap.funding_txid is None or swap.is_redeemed:
             self.swaps.pop(swap.payment_hash.hex())
@@ -377,7 +380,7 @@ class SwapManager:
                     self.logger.debug(f'spending claim tx {tx.txid()}: '
                                      f'\nTX_RAW: {Transaction.serialize(tx)}')
                     txid = await self.lnwatcher.broadcast_raw_transaction(Transaction.serialize(tx))
-                    self.logger.info(f'broadcasted refund claim tx {txid}')
+                    self.logger.info(f'broadcasted claim tx {txid}')
                 except TxBroadcastError:
                     self.logger.error(f'error broadcasting claim tx {txin.spent_txid}. Report bug on github.')
 
