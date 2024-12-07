@@ -41,7 +41,7 @@ services:
       - NOSTR_RELAYS=wss://relay.damus.io,wss://relay.primal.net,wss://nos.lol
       - SWAP_FEE_PPM=10000
       - CONFIRMATION_TARGET_BLOCKS=6
-      - FALLBACK_FEE_SATVB=65
+      - FALLBACK_FEE_SATVB=10
       - PLUGIN_LOG_LEVEL=DEBUG
     networks:
       - dev-net
