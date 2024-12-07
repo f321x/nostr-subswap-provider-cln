@@ -1,6 +1,6 @@
 FROM elementsproject/lightningd:latest
 
-RUN apt update && apt install -y cmake make automake libtool gcc git neovim
+RUN apt update && apt install -y cmake make automake libtool gcc git neovim python3-venv python3-pip
 
 WORKDIR /root/plugins
 
