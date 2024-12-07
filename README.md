@@ -31,12 +31,12 @@ You can find a detailed guide on how to install plugins in CLN using the reckles
 
 For reckless to find the plugin you first have to add this repository:
 ```bash
-$ reckless source add https://github.com/f321x/nostr-subswap-provider-cln
+reckless source add https://github.com/f321x/nostr-subswap-provider-cln
 ```
 
 Then you can install the plugin:
 ```bash
-$ reckless install nostr-subswap-provider-cln
+reckless install nostr-subswap-provider-cln
 ```
 
 ### <u>Configuration</u>
