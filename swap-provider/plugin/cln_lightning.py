@@ -288,7 +288,9 @@ class CLNLightning:
             payment_hash = payment_hash.hex()
         return self._hold_invoices.get(payment_hash)
 
-    def delete_invoice(self, key: str) -> None:
+    def delete_invoice(self, key: Union[bytes, str]) -> None:
+        if isinstance(key, bytes):
+            key = key.hex()
         inv = self._invoices.pop(key, None)
         if inv is None:
             return

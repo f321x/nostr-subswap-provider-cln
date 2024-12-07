@@ -229,7 +229,7 @@ class BitcoinCoreRPC:
             spent_utxos = await self._fetch_spent_utxos(received_txids, spent_amount, address)
             if spent_amount - sum([utxo.value_sats() for utxo in spent_utxos]) > 0:
                 raise UtxosNotFoundError(f"ChainMonitor: get_addr_outputs: "
-                                           f"Could not find all spent utxos for {address}."
+                                           f"Could not find all spent utxos for {address}. "
                                          f"Found {sum([utxo.value_sats() for utxo in spent_utxos])} "
                                          f"out of {spent_amount}")
             funding_inputs.extend(spent_utxos)
@@ -249,21 +249,21 @@ class BitcoinCoreRPC:
 
     async def _fetch_spent_utxos(self, received_txids: List[str], spent_amount_sat: int,
                                  locking_addr: str) -> List[PartialTxInput]:
-        fetch_txs = 1  # amount of transactions to fetch
+        skip_txs = 0  # amount of transactions to fetch
         spent_utxos = []
 
         # we look for the spending transactions and deduct the amount once found
         while spent_amount_sat > 0:
             try:
                 wallet_txs = await self.iface.acall(method="listtransactions",
-                                                    params=["*", fetch_txs, fetch_txs - 1, True],
+                                                    params=["*", 1 , skip_txs, True],
                                                     timeout=HttpxTimeout(5))
             except Exception as e:
                 raise BitcoinCoreRPCError(f"ChainMonitor: _fetch_spent_utxos: Could not get wallet transactions: {e}")
-            fetch_txs += 1
-            if len(wallet_txs) == 0 or fetch_txs > 200:  # no more txs to fetch
+            skip_txs += 1
+            if len(wallet_txs) == 0 or skip_txs > 200:  # no more txs to fetch
                 self._logger.debug(f"ChainMonitor: _fetch_spent_utxos: No more wallet txs to fetch "
-                                   f"got {len(wallet_txs)} txs, fetched {fetch_txs} txs")
+                                   f"got {len(wallet_txs)} txs, fetched {skip_txs} txs")
                 return spent_utxos
             wallet_send_tx = wallet_txs[0] if wallet_txs[0]["category"] == "send" else None
             if not wallet_send_tx:  # fetched tx was no outgoing tx, ignoring it
