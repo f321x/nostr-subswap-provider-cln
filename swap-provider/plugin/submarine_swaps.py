@@ -860,14 +860,13 @@ class NostrTransport:  # (Logger):
             'max_amount': sm._max_amount,
             'relays': sm.config.nostr_relays_csv,
         }
-        self.logger.info(f'publishing swap offer..')
-        self.logger.debug(f'offer: {offer}')
+        self.logger.debug(f'published swap offer offer: {offer}')
         event_id = await aionostr._add_event(
             self.relay_manager,
             kind=self.NOSTR_SWAP_OFFER,
             content=json.dumps(offer),
             private_key=self.nostr_private_key)
-        self.logger.debug(f'published swap offer: {event_id}')
+        self.logger.info(f'published swap offer. Nostr event id: {event_id}')
         sm.is_initialized.set()
 
 #     @log_exceptions
