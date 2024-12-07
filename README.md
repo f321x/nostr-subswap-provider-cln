@@ -1,5 +1,7 @@
 ## <u>Submarine Swap provider plugin for CLN</u>
-<mark>This plugin is a work in progress and not ready for use!</mark>
+<mark>This plugin is functional but experimental. Usage on mainnet is very reckless!</mark>
+
+<mark>Please report any issues on GitHub and use only on testnet/signet.</mark>
 
 This [Core Lightning](https://github.com/ElementsProject/lightning) plugin allows to
 the operator to act as provider for [(reverse) submarine swaps](https://docs.lightning.engineering/the-lightning-network/multihop-payments/understanding-submarine-swaps)
@@ -23,7 +25,6 @@ The Plugin relies on a Bitcoin Core backend Core Lightning is setup to use. **Bi
 for the plugin to work. The Plugin automatically uses the RPC credentials CLN is using and doesn't require any additional setup.
 
 #### Plugin installation
-<mark>Not ready yet!</mark>
 
 You can find a detailed guide on how to install plugins in CLN using the reckless package manager
 [-> here <-](https://docs.corelightning.org/docs/plugins).
