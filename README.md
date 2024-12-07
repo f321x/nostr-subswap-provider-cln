@@ -36,7 +36,7 @@ reckless source add https://github.com/f321x/nostr-subswap-provider-cln
 
 Then you can install the plugin:
 ```bash
-reckless install swap-provider
+reckless install --network=signet swap-provider
 ```
 
 ### <u>Configuration</u>
