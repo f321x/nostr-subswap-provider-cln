@@ -215,13 +215,13 @@ class SwapManager:
             invoice = self.lnworker.get_invoice(key)  # use sendpay
             success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=5)
         except Exception:
-            self.logger.info(f'exception paying {key}: {traceback.format_exc()}, will not retry')
+            self.logger.error(f'exception paying {key}: {traceback.format_exc()}, will not retry')
             self.invoices_to_pay.pop(key, None)
             self.lnworker.delete_invoice(key)
             self._fail_swap(self.swaps[key], 'exception paying invoice')
             return
         if not success:
-            self.logger.info(f'failed to pay pending invoice {key}: {log}, will retry in 10 minutes')
+            self.logger.warning(f'failed to pay pending invoice {key}: {log}, will retry in 10 minutes')
             self.invoices_to_pay[key] = now() + 600
         else:
             self.logger.info(f'paid invoice {key}')
@@ -238,7 +238,7 @@ class SwapManager:
                 await self.taskgroup.spawn(self.pay_pending_ln_invoice(key))
 
     def _fail_swap(self, swap: SwapData, reason: str):
-        self.logger.info(f'failing swap {swap.payment_hash.hex()}: {reason}')
+        self.logger.warning(f'failing swap {swap.payment_hash.hex()}: {reason}')
         if not swap.is_reverse and swap.payment_hash in self.lnworker._hold_invoice_callbacks:
             self.lnworker.unregister_hold_invoice_callback(swap.payment_hash)
             for payment_hash in [swap.payment_hash, swap.prepay_hash]:
@@ -261,7 +261,7 @@ class SwapManager:
         hold_invoice = self.lnworker.get_hold_invoice(swap.payment_hash)
         hold_invoice.settle(swap.preimage)
         if not hold_invoice.funding_status == InvoiceState.SETTLED:
-            self.logger.info(f'hold invoice settling failed: {swap.payment_hash.hex()}')
+            self.logger.error(f'hold invoice settling failed: {swap.payment_hash.hex()}')
             return
         self.lnworker.delete_hold_invoice(swap.payment_hash)
         if swap.prepay_hash:
@@ -310,7 +310,7 @@ class SwapManager:
             if spent_height is not None:
                 swap.spending_txid = txin.spent_txid
                 if spent_height > 0 and current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
-                    self.logger.info(f'stop watching swap {swap.lockup_address}')
+                    self.logger.debug(f'stop watching swap {swap.lockup_address}')
                     swap.is_redeemed = True
                     self._fail_swap(swap, 'claimed back after timeout')
 
@@ -322,13 +322,13 @@ class SwapManager:
                     self.logger.debug(f"claim swap extracted preimage: {preimage.hex()} for {swap.lockup_address}")
                     if sha256(preimage) == swap.payment_hash:
                         swap.preimage = preimage.hex()
-                        self.logger.info(f'found preimage: {preimage.hex()}')
+                        self.logger.debug(f'found preimage: {preimage.hex()}')
                         return self._finish_normal_swap(swap)
                         # note: we must check the payment secret before we broadcast the funding tx
                     else:
                         # this is our refund tx
                         if spent_height > 0:
-                            self.logger.info(f'refund tx confirmed: {txin.spent_txid} {spent_height}')
+                            self.logger.debug(f'refund tx confirmed: {txin.spent_txid} {spent_height}')
                             return self._fail_swap(swap, 'refund tx confirmed')
                         else:
                             # claim_tx.add_info_from_wallet(self.wallet)
@@ -336,7 +336,7 @@ class SwapManager:
                             recommended_fee = self.get_claim_fee()
                             if claim_tx_fee * 1.1 < recommended_fee:
                                 should_bump_fee = True
-                                self.logger.info(f'claim tx fee too low {claim_tx_fee} < {recommended_fee}. we will bump the fee')
+                                self.logger.debug(f'claim tx fee too low {claim_tx_fee} < {recommended_fee}. we will bump the fee')
 
                 if remaining_time > 0:
                     # too early for refund
@@ -360,7 +360,7 @@ class SwapManager:
                     if remaining_time <= MIN_LOCKTIME_DELTA:
                         if key in self.invoices_to_pay:
                             # fixme: should consider cltv of ln payment
-                            self.logger.info(f'locktime too close {key} {remaining_time}')
+                            self.logger.debug(f'locktime too close {key} {remaining_time}')
                             self.invoices_to_pay.pop(key, None)
                         return
                     if key not in self.invoices_to_pay:
@@ -372,7 +372,7 @@ class SwapManager:
             try:
                 tx = self._create_and_sign_claim_tx(txin=txin, swap=swap)
             except BelowDustLimit:
-                self.logger.info('utxo value below dust threshold')
+                self.logger.error('_claim_tx: utxo value below dust threshold')
                 return
             swap.spending_txid = tx.txid()
             if funding_height.conf > 0: # or (swap.is_reverse and self.wallet.config.LIGHTNING_ALLOW_INSTANT_SWAPS):
@@ -833,10 +833,10 @@ class NostrTransport:  # (Logger):
         except Exception:
             self.logger.error(f"Nostr taskgroup died. {traceback.format_exc()}")
         finally:
-            self.logger.info("Nostr taskgroup stopped.")
+            self.logger.warning("Nostr taskgroup stopped.")
 
     async def stop(self):
-        self.logger.info("shutting down nostr transport")
+        self.logger.warning("shutting down nostr transport")
         self.sm.is_initialized.clear()
         # trying to gracefully shut down what's left of the NostrTransport
         for coro in [self.relay_manager.close, self.taskgroup.cancel_remaining]:
@@ -905,7 +905,7 @@ class NostrTransport:  # (Logger):
         else:
             raise Exception(method)
         r['reply_to'] = event_id
-        self.logger.info(f'sending response id={event_id}')
+        self.logger.debug(f'sending response id={event_id}')
         await self.send_direct_message(event_pubkey, json.dumps(r))
 
 
