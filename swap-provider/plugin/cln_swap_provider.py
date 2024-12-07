@@ -75,7 +75,6 @@ class CLNSwapProvider:
                                         plugin_config=self.config,
                                         logger=self.logger)
 
-
     async def run(self):
         if not self.is_initialized:
             await self.initialize()
