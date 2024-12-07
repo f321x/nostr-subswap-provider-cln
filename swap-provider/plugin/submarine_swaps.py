@@ -455,7 +455,6 @@ class SwapManager:
             fallback_address=None,
             min_final_cltv_expiry_delta=min_final_cltv_expiry_delta,
         )
-        # self.lnworker.add_payment_info_for_hold_invoice(payment_hash, invoice_amount_sat)
 
         if prepay:
             prepay_hash = self.lnworker.create_payment_info(amount_msat=prepay_amount_sat*1000)

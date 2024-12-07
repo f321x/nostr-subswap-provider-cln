@@ -54,7 +54,6 @@ class CLNLightning:
         self._hold_invoice_callbacks = {}
         self._invoice_lock = threading.RLock()
         self._payment_info_lock = threading.RLock()
-        self._payment_info = db.get_dict('lightning_payments')  # RHASH -> amount, direction, is_paid
         self._preimages = db.get_dict('lightning_preimages')  # RHASH -> preimage
         self._invoices = db.get_dict('invoices')  # type: Dict[str, Invoice]
         self._hold_invoices = db.get_dict('hold_invoices')  # type: Dict[str, HoldInvoice]  # HASH[hex] -> bolt11
@@ -250,17 +249,10 @@ class CLNLightning:
             return True, result['payment_preimage']
         return False, result
 
-    # async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
-    #     self._logger.debug("pay_invoice: " + bolt11)
-
     def create_payment_info(self, *, amount_msat: Optional[int], write_to_disk=True) -> bytes:
         payment_preimage = os.urandom(32)
         payment_hash = sha256(payment_preimage)
-        info = PaymentInfo(payment_hash, amount_msat, RECEIVED, PR_UNPAID)
-        self.save_preimage(payment_hash, payment_preimage, write_to_disk=False)
-        self._save_payment_info(info, write_to_disk=False)
-        if write_to_disk:
-            self._db.write()
+        self.save_preimage(payment_hash, payment_preimage, write_to_disk=True)
         return payment_hash
 
     def save_preimage(self, payment_hash: bytes, preimage: bytes, *, write_to_disk: bool = True):
@@ -270,22 +262,13 @@ class CLNLightning:
         if write_to_disk:
             self._db.write()
 
-    def _save_payment_info(self, info: PaymentInfo, *, write_to_disk: bool = True) -> None:
-        key = info.payment_hash.hex()
-        assert info.status in SAVED_PR_STATUS
-        with self._payment_info_lock:
-            self._payment_info[key] = info.amount_msat, info.direction, info.status
-        if write_to_disk:
-            self._db.write()
-
     def delete_payment_info(self, payment_hash: Union[bytes, str]) -> None:
         """Used to delete remaining payment info after a swap has been completed or failed"""
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
         with self._payment_info_lock:
-            info_res = self._payment_info.pop(payment_hash, None)
             preimage_res = self._preimages.pop(payment_hash, None)
-        if info_res is None and preimage_res is None:
+        if preimage_res is None:
             return
         self._db.write()
 
