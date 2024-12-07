@@ -798,7 +798,6 @@ class NostrTransport:  # (Logger):
     def __init__(self, *, config, sm):
         self.logger = config.logger
         self.config = config
-        # self.network = sm.network
         self.relays = config.nostr_relays
         self.sm = sm
         self.offers = {}
@@ -810,7 +809,6 @@ class NostrTransport:  # (Logger):
         self.relay_manager = aionostr.Manager(self.relays, private_key=self.nostr_private_key)
         self.is_connected = asyncio.Event()
         self.taskgroup = OldTaskGroup()
-        # self.server_relays = None
 
     def __enter__(self):
         asyncio.create_task(self.main_loop())  # , self.network.asyncio_loop)
