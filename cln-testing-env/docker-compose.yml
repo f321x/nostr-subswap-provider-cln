@@ -62,35 +62,6 @@ services:
       - bitcoind
 
 
-# normal signet (needed to test fee estimation, kind of impossible to get signet coins)
-#  bitcoind:
-#    container_name: signet
-#    image: dobtc/bitcoin:28.0
-#    command: -signet --rpcuser=bitcoin --rpcpassword=bitcoin -rpcport=38332
-#    ports:
-#      - 0.0.0.0:38333:38333
-#      - 0.0.0.0:38332:38332
-#    volumes:
-#      - bitcoin_datadir:/root/.bitcoin
-#    networks:
-#      - dev-net
-#    restart: always
-#    platform: linux/amd64
-
-#  testnet 4 (not yet supported by CLN)
-#  bitcoind:
-#    container_name: testnet4
-#    image: dobtc/bitcoin:28.0
-#    command: --rpcuser=bitcoin --rpcpassword=bitcoin -testnet4 --rpcport=48332
-#    ports:
-#      - 0.0.0.0:48332:48332
-#    volumes:
-#      - bitcoin_datadir:/root/.bitcoin
-#    networks:
-#      - dev-net
-#    restart: always
-#    platform: linux/amd64
-
 volumes:
   bitcoin_datadir:
     driver: local
