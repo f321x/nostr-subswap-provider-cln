@@ -100,7 +100,9 @@ class CLNLightning:
             invoice.cancel_all_htlcs()  # also cancel the prepay invoice!
 
             if invoice.associated_invoice is not None:
+                self._logger.debug(f"asspcov: {invoice.associated_invoice}")
                 prepay_invoice = self.get_hold_invoice(invoice.associated_invoice)
+                self._logger.debug(f"prepay_invoice: {prepay_invoice}")
                 prepay_invoice.cancel_all_htlcs()
                 self.delete_hold_invoice(prepay_invoice.payment_hash)
 
@@ -237,8 +239,9 @@ class CLNLightning:
 
         retry_for = attempts * 45 if attempts > 1 else 60  # CLN automatically retries for the given amount of time
         try:
-            result = await call_blocking_with_timeout(self._rpc.pay(bolt11=bolt11, retry_for=retry_for),
-                                                timeout=retry_for + 30)
+            # result = await call_blocking_with_timeout(self._rpc.pay(bolt11=bolt11, retry_for=retry_for),  // wrong call
+            #                                     timeout=retry_for + 30)
+            result = await asyncio.to_thread(self._rpc.pay, bolt11=bolt11, retry_for=retry_for)
         except Exception as e:
             return False, "pay_invoice call to CLN failed: " + str(e)
 
@@ -246,6 +249,9 @@ class CLNLightning:
         if 'payment_preimage' in result and result['payment_preimage'] and result['status'] == 'complete':
             return True, result['payment_preimage']
         return False, result
+
+    # async def pay_invoice(self, *, bolt11: str, attempts: int) -> (bool, str):  # -> (success, log)
+    #     self._logger.debug("pay_invoice: " + bolt11)
 
     def create_payment_info(self, *, amount_msat: Optional[int], write_to_disk=True) -> bytes:
         payment_preimage = os.urandom(32)
