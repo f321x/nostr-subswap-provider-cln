@@ -6,11 +6,13 @@ from typing import Optional, Tuple, List, Union
 from httpx import Timeout as HttpxTimeout
 import asyncio
 import time
+from decimal import Decimal
 
 from .cln_logger import PluginLogger
 from .lnutil import bytes_to_hex
 from .transaction import Transaction, PartialTxInput, TxOutpoint
 from .utils import TxMinedInfo, descsum_create
+from .bitcoin import COIN
 
 class BitcoinCoreRPC:
     def __init__(self, logger: PluginLogger,
@@ -219,7 +221,7 @@ class BitcoinCoreRPC:
         for utxo in utxos:
             funding_inputs.append(await self._utxo_to_partial_txin(utxo))
         unspent_amount_sat = sum([utxo.value_sats() for utxo in funding_inputs])
-        spent_amount = int(float(received[0]['amount']) * 10**8) - unspent_amount_sat
+        spent_amount = int(Decimal(str(received[0]['amount'])) * COIN) - unspent_amount_sat
         self._logger.debug(f"ChainMonitor: get_addr_outputs: Address {address} has "
                            f"{unspent_amount_sat} unspent sats and {spent_amount} spent sats")
         if spent_amount > 0:  # nothing received to the address has been spent yet
@@ -227,7 +229,9 @@ class BitcoinCoreRPC:
             spent_utxos = await self._fetch_spent_utxos(received_txids, spent_amount, address)
             if spent_amount - sum([utxo.value_sats() for utxo in spent_utxos]) > 0:
                 raise UtxosNotFoundError(f"ChainMonitor: get_addr_outputs: "
-                                           f"Could not find all spent utxos for {address}")
+                                           f"Could not find all spent utxos for {address}."
+                                         f"Found {sum([utxo.value_sats() for utxo in spent_utxos])} "
+                                         f"out of {spent_amount}")
             funding_inputs.extend(spent_utxos)
         return funding_inputs
 
@@ -236,7 +240,7 @@ class BitcoinCoreRPC:
         future_prevout = TxOutpoint(txid=bytes.fromhex(utxo['txid']), out_idx=utxo['vout'])
         part_txin = PartialTxInput(prevout=future_prevout, is_coinbase_output=False)  # rpc call doesn't return coinbase outputs
         part_txin._trusted_address = utxo['address']
-        part_txin._trusted_value_sats = int(utxo['amount'] * 10**8)
+        part_txin._trusted_value_sats = int(Decimal(str(utxo['amount'])) * COIN)
         part_txin.block_height = await self.get_tx_height(utxo['txid'])
         part_txin.block_txpos = utxo.get('blockindex', None)
         part_txin.spent_height = utxo.get('spent_height', None)

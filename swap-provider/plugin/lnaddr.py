@@ -5,8 +5,8 @@ import re
 import time
 from hashlib import sha256
 from binascii import hexlify
-from decimal import Decimal
 from typing import Optional, Type, Dict, Any, Sequence, Tuple
+from decimal import Decimal
 import random
 import electrum_ecc as ecc
 
