@@ -271,6 +271,15 @@ class SwapManager:
         self.swaps.pop(swap.payment_hash.hex())
         self.db.write()
 
+    def delete_finished_reverse_swap(self, swap: SwapData):
+        """Used to delete remaining swap data after our claim transaction is confirmed on a reverse swap"""
+        self.lnworker.delete_invoice(swap.payment_hash)
+        self.lnwatcher.remove_callback(swap.lockup_address)
+        self.invoices_to_pay.pop(swap.payment_hash.hex(), None)
+        if swap.funding_txid is None or swap.is_redeemed:
+            self.swaps.pop(swap.payment_hash.hex(), None)
+        self.db.write()
+
     # @log_exceptions
     async def _claim_swap(self, swap: SwapData) -> None:
         assert self.lnwatcher
@@ -293,7 +302,7 @@ class SwapManager:
             # if it is a normal swap, we might have double spent the funding tx
             # in that case we need to fail the HTLCs
             if remaining_time <= 0:
-                self._fail_swap(swap, 'expired')
+                return self._fail_swap(swap, 'expired')
 
         if txin:
             self.logger.debug(f'claim_swap found funding tx {txin.prevout.txid.hex()}')
@@ -310,9 +319,9 @@ class SwapManager:
             if spent_height is not None:
                 swap.spending_txid = txin.spent_txid
                 if spent_height > 0 and current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
-                    self.logger.debug(f'stop watching swap {swap.lockup_address}')
+                    self.logger.info(f'stop watching swap {swap.lockup_address}')
                     swap.is_redeemed = True
-                    self._fail_swap(swap, 'claimed back after timeout')
+                    return self.delete_finished_reverse_swap(swap)
 
             if not swap.is_reverse:
                 if swap.preimage is None and spent_height is not None:
@@ -327,12 +336,12 @@ class SwapManager:
                         # note: we must check the payment secret before we broadcast the funding tx
                     else:
                         # this is our refund tx
-                        if spent_height > 0:
-                            self.logger.debug(f'refund tx confirmed: {txin.spent_txid} {spent_height}')
+                        if spent_height >= 2:
+                            self.logger.info(f'failed normal swap refund tx confirmed: '
+                                             f'{txin.spent_txid} @ {spent_height}')
                             swap.is_redeemed = True
                             return self._fail_swap(swap, 'refund tx confirmed')
                         else:
-                            # claim_tx.add_info_from_wallet(self.wallet)
                             claim_tx_fee = claim_tx.get_fee()
                             recommended_fee = self.get_claim_fee()
                             if claim_tx_fee * 1.1 < recommended_fee:
