@@ -319,7 +319,7 @@ class SwapManager:
             if spent_height is not None:
                 swap.spending_txid = txin.spent_txid
                 if spent_height > 0 and current_height - spent_height > REDEEM_AFTER_DOUBLE_SPENT_DELAY:
-                    self.logger.info(f'stop watching swap {swap.lockup_address}')
+                    self.logger.info(f'stop watching finished reverse swap {swap.lockup_address}')
                     swap.is_redeemed = True
                     return self.delete_finished_reverse_swap(swap)
 
