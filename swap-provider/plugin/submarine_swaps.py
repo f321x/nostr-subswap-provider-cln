@@ -329,6 +329,7 @@ class SwapManager:
                         # this is our refund tx
                         if spent_height > 0:
                             self.logger.debug(f'refund tx confirmed: {txin.spent_txid} {spent_height}')
+                            swap.is_redeemed = True
                             return self._fail_swap(swap, 'refund tx confirmed')
                         else:
                             # claim_tx.add_info_from_wallet(self.wallet)
