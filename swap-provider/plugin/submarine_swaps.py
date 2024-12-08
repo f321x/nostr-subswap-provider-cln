@@ -781,9 +781,13 @@ class SwapManager:
                 "onchainAmount": swap.onchain_amount,
             }
         elif req_type == 'submarine':
-            raise Exception('Deprecated API. Please upgrade your version of Electrum')
+            response = {
+                'error': 'Deprecated API. Please upgrade your version of Electrum'
+            }
         else:
-            raise Exception('unsupported request type:' + req_type)
+            response = {
+                'error': f'unsupported request type: {req_type}'
+            }
         return response
 
 
@@ -866,7 +870,7 @@ class NostrTransport:  # (Logger):
             kind=self.NOSTR_SWAP_OFFER,
             content=json.dumps(offer),
             private_key=self.nostr_private_key)
-        self.logger.info(f'published swap offer. Nostr event id: {event_id}')
+        self.logger.debug(f'published swap offer. Nostr event id: {event_id}')
         sm.is_initialized.set()
 
 #     @log_exceptions
@@ -895,7 +899,7 @@ class NostrTransport:  # (Logger):
         method = request.pop('method')
         event_id = request.pop('event_id')
         event_pubkey = request.pop('event_pubkey')
-        print(f'handle_request: id={event_id} {method} {request}')
+        self.logger.info(f'received swap request: id={event_id} {method} {request}')
         if method == 'addswapinvoice':
             r = self.sm.server_add_swap_invoice(request)
         elif method == 'createswap':
@@ -903,7 +907,7 @@ class NostrTransport:  # (Logger):
         elif method == 'createnormalswap':
             r = await self.sm.server_create_normal_swap(request)
         else:
-            raise Exception(method)
+            r = {'error': f'unknown swap method: {method}'}
         r['reply_to'] = event_id
         self.logger.debug(f'sending response id={event_id}')
         await self.send_direct_message(event_pubkey, json.dumps(r))
