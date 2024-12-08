@@ -205,9 +205,9 @@ class BitcoinCoreRPC:
         # get all transactions that spent to the address
         try:  # minconf, include_empty, include_watchonly, address_filter, include_immature_cb
             received = await self.iface.acall(method="listreceivedbyaddress",
-                                              params=[1, True, True, address, False])
+                                              params=[0, True, True, address, False])
             utxos = await self.iface.acall(method="listunspent",
-                                           params=[1, 9999999, [address]])
+                                           params=[0, 9999999, [address]])
         except Exception:
             raise BitcoinCoreRPCError(f"ChainMonitor: get_addr_outputs call for {address} failed: {traceback.format_exc()}")
         if len(received) == 0:
@@ -282,7 +282,7 @@ class BitcoinCoreRPC:
                             "vout": txin.prevout.out_idx,
                             "address": locking_addr,
                             "amount": spent_output.value,
-                            "spent_height": wallet_send_tx.get("blockheight", None),
+                            "spent_height": wallet_send_tx.get("blockheight", 0),
                             "spent_txid": wallet_send_tx["txid"]
                         }
                         spent_utxos.append(await self._utxo_to_partial_txin(utxo))
