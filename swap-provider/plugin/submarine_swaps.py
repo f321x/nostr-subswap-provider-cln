@@ -341,7 +341,7 @@ class SwapManager:
                                              f'{txin.spent_txid} @ {spent_height}')
                             swap.is_redeemed = True
                             return self._fail_swap(swap, 'refund tx confirmed')
-                        else:
+                        elif spent_height == 0:  # still unconfirmed, we check if bumping is neccessary
                             claim_tx_fee = claim_tx.get_fee()
                             recommended_fee = self.get_claim_fee()
                             if claim_tx_fee * 1.1 < recommended_fee:
