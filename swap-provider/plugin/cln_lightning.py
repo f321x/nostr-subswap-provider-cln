@@ -262,7 +262,7 @@ class CLNLightning:
         if write_to_disk:
             self._db.write()
 
-    def delete_payment_info(self, payment_hash: Union[bytes, str]) -> None:
+    def delete_payment_info(self, payment_hash: Union[bytes, str], write_db: bool = True) -> None:
         """Used to delete remaining payment info after a swap has been completed or failed"""
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
@@ -270,7 +270,8 @@ class CLNLightning:
             preimage_res = self._preimages.pop(payment_hash, None)
         if preimage_res is None:
             return
-        self._db.write()
+        if write_db:
+            self._db.write()
 
     def save_invoice(self, invoice: Invoice, *, write_to_disk: bool = True) -> None:
         key = invoice.get_id()
@@ -288,13 +289,14 @@ class CLNLightning:
             payment_hash = payment_hash.hex()
         return self._hold_invoices.get(payment_hash)
 
-    def delete_invoice(self, key: Union[bytes, str]) -> None:
+    def delete_invoice(self, key: Union[bytes, str], write_db: bool = True) -> None:
         if isinstance(key, bytes):
             key = key.hex()
         inv = self._invoices.pop(key, None)
         if inv is None:
             return
-        self._db.write()
+        if write_db:
+            self._db.write()
 
     def get_regular_bolt11_invoice(  # we generate the preimage
             self, *,
@@ -343,7 +345,7 @@ class CLNLightning:
         self._hold_invoices[invoice.payment_hash.hex()] = invoice
         self._db.write()
 
-    def delete_hold_invoice(self, payment_hash: Union[bytes, str]) -> None:
+    def delete_hold_invoice(self, payment_hash: Union[bytes, str], write_db: bool = True) -> None:
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
         self._logger.debug(f"delete_hold_invoice: {payment_hash}")
@@ -351,7 +353,8 @@ class CLNLightning:
         res = self._hold_invoices.pop(payment_hash, None)
         if res is None:
             return
-        self._db.write()
+        if write_db:
+            self._db.write()
 
     def b11invoice_from_hash(self, *,
             payment_hash: Union[str, bytes],
