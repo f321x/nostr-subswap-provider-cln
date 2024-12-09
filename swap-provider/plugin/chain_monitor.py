@@ -27,6 +27,8 @@ class ChainMonitor(BitcoinCoreRPC):
                 blockheight = await self.get_local_height()
                 if blockheight > last_height:
                     self._logger.debug(f"ChainMonitor: New blockheight: {blockheight}")
+                    if len(self.callbacks) > 0:
+                        self._logger.debug(f"{len(self.callbacks)} monitored submarine swaps.")
                     last_height = blockheight
                     await self.trigger_callbacks()
             except Exception as e:
