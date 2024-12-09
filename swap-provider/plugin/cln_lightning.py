@@ -47,7 +47,7 @@ class CLNLightning:
         # self.MIN_FINAL_CLTV_DELTA_FOR_INVOICE: int = self.MIN_FINAL_CLTV_DELTA_ACCEPTED + 3
 
         self._rpc = plugin_instance.plugin.rpc
-        plugin_instance.set_htlc_hook(self.plugin_htlc_accepted_hook)
+        self._htlc_hook_setter = plugin_instance.set_htlc_hook
         self._config = config
         self._db = db
         self._logger = logger
@@ -70,6 +70,7 @@ class CLNLightning:
         callback_handler = asyncio.to_thread(self.callback_handler)
         self.monitoring_tasks.append(asyncio.create_task(callback_handler))
 
+        self._htlc_hook_setter.set_htlc_hook(self.plugin_htlc_accepted_hook)  # has to be last so other vars are init
         self._logger.debug("CLNLightning monitoring started")
 
     def monitor_expiries(self):
