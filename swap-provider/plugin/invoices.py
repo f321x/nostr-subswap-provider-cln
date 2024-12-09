@@ -173,7 +173,8 @@ class Htlc:
         """Settle HTLC with correct payment details"""
         if not self.state == HtlcState.ACCEPTED:
             raise InvalidHtlcState("Htlc is not in ACCEPTED state, is: {}".format(self.state))
-        assert(self.request_callback is not None), "Htlc has no callback set on settle"
+        assert(self.request_callback is not None), (f"Htlc has no callback set on settle. "
+                                                    f"Fix this or you lose your htlc.")
         self.state = HtlcState.SETTLED
         self.request_callback.set_result({"result": "resolve",
                                           "payment_key": preimage.hex()})
