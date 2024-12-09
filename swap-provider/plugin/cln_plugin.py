@@ -20,7 +20,6 @@ class CLNPlugin:
         async def __run():
             self.__task = asyncio.create_task(asyncio.to_thread(self.plugin.run))
             await asyncio.wait_for(self.__await_rpc(), timeout=50)
-            asyncio.create_task(asyncio.to_thread(self.__replay_buffered_htlcs))
             return self
         return __run().__await__()
 
@@ -53,9 +52,6 @@ class CLNPlugin:
 
     def __replay_buffered_htlcs(self):
         """Replay the htlcs we buffered while the hook was not ready"""
-        while not self.__hook_ready.is_set():
-           time.sleep(0.5)
-        time.sleep(1)
         if len(self.__buffered_htlcs) == 0:
             return
         self.plugin.log(f"Replaying {len(self.__buffered_htlcs)} buffered htlcs", level="debug")
@@ -66,12 +62,12 @@ class CLNPlugin:
                              htlc['plugin'],
                              *htlc['args'],
                              **htlc['kwargs'])
-            time.sleep(0.1)
         self.__buffered_htlcs = []
 
     def set_htlc_hook(self, hook: Callable[..., JSONType]) -> None:
         self.__htlc_hook = hook
         self.__hook_ready.set()
+        self.__replay_buffered_htlcs()
 
     def derive_secret(self, derivation_str: str) -> bytes:
         """Derive a secret from CLN HSM secret (for use as Nostr secret)"""
