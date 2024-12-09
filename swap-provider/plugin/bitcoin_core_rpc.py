@@ -160,20 +160,21 @@ class BitcoinCoreRPC:
             raw_tx = await self.iface.getrawtransaction(txid=txid_hex, verbose=True)
 
             height = None
-            if raw_tx["confirmations"] > 0:
+            confirmations = raw_tx.get("confirmations", 0)
+            if confirmations > 0:
                 blockheader = await self.iface.getblockheader(block_hash=raw_tx["blockhash"], verbose=True)
                 height = blockheader["height"]
 
             return TxMinedInfo(
                 height=height,
-                conf=raw_tx["confirmations"],
+                conf=confirmations,
                 timestamp=raw_tx["blocktime"],
                 txpos=None,  # we don't have this info and don't need it
                 header_hash=raw_tx["blockhash"],
                 wanted_height=raw_tx["locktime"] if raw_tx["locktime"] > 0 else None,
             )
         except Exception as e:
-            raise BitcoinCoreRPCError(f"ChainMonitor get_tx_height: Could not get raw transaction: {e}")
+            raise BitcoinCoreRPCError(f"ChainMonitor get_tx_height: Could not get raw transaction {txid_hex}: {e}")
 
     async def get_transaction(self, txid_hex: str) -> Optional[Transaction]:
         """getrawtransaction into Transaction object"""
