@@ -168,9 +168,9 @@ class BitcoinCoreRPC:
             return TxMinedInfo(
                 height=height,
                 conf=confirmations,
-                timestamp=raw_tx["blocktime"],
+                timestamp=raw_tx.get("blocktime", None),
                 txpos=None,  # we don't have this info and don't need it
-                header_hash=raw_tx["blockhash"],
+                header_hash=raw_tx.get("blockhash", None),
                 wanted_height=raw_tx["locktime"] if raw_tx["locktime"] > 0 else None,
             )
         except Exception as e:
