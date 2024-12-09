@@ -185,9 +185,9 @@ class SwapManager:
             self.add_lnwatcher_callback(swap)
 
         tasks = [
-                self.lnwatcher.trigger_callbacks(),  # trigger all callbacks once
-                self.pay_pending_ln_invoices(),
-                self.run_nostr_server()
+                    self.lnwatcher.trigger_callbacks(),  # trigger all callbacks once
+                    self.pay_pending_ln_invoices(),
+                    self.run_nostr_server()
                 ]
 
         async with self.taskgroup as group:
