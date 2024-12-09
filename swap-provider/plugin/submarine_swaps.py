@@ -246,10 +246,10 @@ class SwapManager:
                 invoice = self.lnworker.get_hold_invoice(payment_hash)
                 if invoice:
                     invoice.cancel_all_htlcs()
-                    self.lnworker.delete_hold_invoice(payment_hash)
-                self.lnworker.delete_payment_info(payment_hash)
+                    self.lnworker.delete_hold_invoice(payment_hash, False)
+                self.lnworker.delete_payment_info(payment_hash, False)
         else:
-            self.lnworker.delete_invoice(swap.payment_hash)
+            self.lnworker.delete_invoice(swap.payment_hash, False)
         self.lnwatcher.remove_callback(swap.lockup_address)
         if swap.funding_txid is None or swap.is_redeemed:
             self.swaps.pop(swap.payment_hash.hex())
@@ -263,17 +263,17 @@ class SwapManager:
         if not hold_invoice.funding_status == InvoiceState.SETTLED:
             self.logger.error(f'hold invoice settling failed: {swap.payment_hash.hex()}')
             return
-        self.lnworker.delete_hold_invoice(swap.payment_hash)
+        self.lnworker.delete_hold_invoice(swap.payment_hash, False)
         if swap.prepay_hash:
-            self.lnworker.delete_hold_invoice(swap.prepay_hash)
-        self.lnworker.delete_payment_info(swap.payment_hash)
+            self.lnworker.delete_hold_invoice(swap.prepay_hash, False)
+        self.lnworker.delete_payment_info(swap.payment_hash, False)
         self.lnwatcher.remove_callback(swap.lockup_address)
         self.swaps.pop(swap.payment_hash.hex())
         self.db.write()
 
     def delete_finished_reverse_swap(self, swap: SwapData):
         """Used to delete remaining swap data after our claim transaction is confirmed on a reverse swap"""
-        self.lnworker.delete_invoice(swap.payment_hash)
+        self.lnworker.delete_invoice(swap.payment_hash, False)
         self.lnwatcher.remove_callback(swap.lockup_address)
         self.invoices_to_pay.pop(swap.payment_hash.hex(), None)
         if swap.funding_txid is None or swap.is_redeemed:
@@ -327,13 +327,12 @@ class SwapManager:
                 if swap.preimage is None and spent_height is not None:
                     # extract the preimage, add it to lnwatcher
                     claim_tx = await self.lnwatcher.get_transaction(txin.spent_txid)
-                    preimage = claim_tx.inputs()[0].witness_elements()[1]
-                    self.logger.debug(f"claim swap extracted preimage: {preimage.hex()} for {swap.lockup_address}")
-                    if sha256(preimage) == swap.payment_hash:
-                        swap.preimage = preimage.hex()
-                        self.logger.debug(f'found preimage: {preimage.hex()}')
-                        return self._finish_normal_swap(swap)
-                        # note: we must check the payment secret before we broadcast the funding tx
+                    for txin in claim_tx.inputs():
+                        preimage = txin.witness_elements()[1]
+                        if sha256(preimage) == swap.payment_hash:
+                            self.logger.debug(f"claim swap extracted preimage: {preimage.hex()} for {swap.lockup_address}")
+                            swap.preimage = preimage.hex()
+                            return self._finish_normal_swap(swap)
                     else:
                         # this is our refund tx
                         if spent_height >= 2:
