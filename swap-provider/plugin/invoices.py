@@ -260,21 +260,6 @@ class HoldInvoice:
                 stored_htlc.fail()
         self.funding_status = InvoiceState.FAILED
 
-    # def cancel_expired_htlcs(self) -> bool:
-    #     """Cancel all expired htlcs and return True if changes need to be saved"""
-    #     changes = False
-    #     if not self.funding_status == InvoiceState.FUNDED:
-    #         for stored_htlc in self.incoming_htlcs:
-    #             if (stored_htlc.state == HtlcState.ACCEPTED
-    #                 and (int(time.time()) - stored_htlc.created_at) > self.expiry):
-    #                 # we have not received enough htlcs but the invoice expired, so we cancel
-    #                 changes = True
-    #                 stored_htlc.fail_timeout()
-    #     if changes and not self.is_fully_funded():
-    #         # set invoice to unfunded again in case it was already set funded, and we are now below the threshold
-    #         self.funding_status = InvoiceState.FAILED
-    #     return changes
-
     def settle(self, preimage: Union[bytes, str]) -> None:
         """Settle the invoice with the given preimage"""
         if isinstance(preimage, str):

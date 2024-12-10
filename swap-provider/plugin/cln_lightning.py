@@ -100,7 +100,7 @@ class CLNLightning:
             invoice.cancel_all_htlcs()  # also cancel the prepay invoice!
 
             if invoice.associated_invoice is not None:
-                self._logger.debug(f"asspcov: {invoice.associated_invoice}")
+                self._logger.debug(f"deleting associated invoice: {invoice.associated_invoice}")
                 prepay_invoice = self.get_hold_invoice(invoice.associated_invoice)
                 self._logger.debug(f"prepay_invoice: {prepay_invoice}")
                 prepay_invoice.cancel_all_htlcs()

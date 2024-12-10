@@ -394,7 +394,7 @@ class JsonDB:  # (Logger):
 
     @locked
     def write(self):
-        if self.storage.needs_consolidation():
+        if self.storage.needs_consolidation() or self.human_readable:
             self.write_and_force_consolidation()
         else:
             self._append_pending_changes()
