@@ -2,7 +2,7 @@
 """
 Core Lightning submarine swap provider plugin using the Electrum Nostr submarine swap protocol.
 To run install requirements (pip install -r requirements.txt), then
-cp plugin_src/* in the CLN plugin dir, or set plugin=/path/to/swap-provider.py in the CLN config to run.
+cp swap-provider/* in the CLN plugin dir, or set plugin=/path/to/swap-provider.py in the CLN config to run.
 """
 
 import asyncio
