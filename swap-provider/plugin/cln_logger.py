@@ -59,7 +59,7 @@ class PluginLogger:
     def append_to_buffer(self, msg: str) -> None:
         """Append a debug message to the buffer, delete the oldest if len is larger than max buffer size"""
         self.debug_buffer.append(f"buffered debug log from {datetime.now().isoformat()}: {msg}")
-        if len(self.debug_buffer) > self.debug_buffer_size:
+        if len(self.debug_buffer) > self.debug_buffer_size > 0:
             self.debug_buffer.pop(0)
 
     def replay_debug_buffer(self) -> None:
