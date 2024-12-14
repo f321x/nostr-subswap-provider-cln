@@ -3,6 +3,8 @@
 
 <mark>Please report any issues on GitHub and use only on testnet/signet.</mark>
 
+<mark>There is one active instance of this plugin running on signet for client testing.</mark>
+
 This [Core Lightning](https://github.com/ElementsProject/lightning) plugin allows to
 the operator to act as provider for [(reverse) submarine swaps](https://docs.lightning.engineering/the-lightning-network/multihop-payments/understanding-submarine-swaps)
 to users of the
