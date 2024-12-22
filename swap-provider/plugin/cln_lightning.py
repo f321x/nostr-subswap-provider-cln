@@ -101,10 +101,10 @@ class CLNLightning:
 
             if invoice.associated_invoice is not None:
                 self._logger.debug(f"deleting associated invoice: {invoice.associated_invoice}")
-                prepay_invoice = self.get_hold_invoice(invoice.associated_invoice)
-                self._logger.debug(f"prepay_invoice: {prepay_invoice}")
-                prepay_invoice.cancel_all_htlcs()
-                self.delete_hold_invoice(prepay_invoice.payment_hash)
+                if prepay_invoice := self.get_hold_invoice(invoice.associated_invoice) is not None:
+                    self._logger.debug(f"prepay_invoice: {prepay_invoice}")
+                    prepay_invoice.cancel_all_htlcs()
+                    self.delete_hold_invoice(prepay_invoice.payment_hash)
 
             self.delete_hold_invoice(invoice.payment_hash)
             return True
@@ -288,7 +288,7 @@ class CLNLightning:
     def get_hold_invoice(self, payment_hash: Union[str, bytes]) -> Optional[HoldInvoice]:
         if isinstance(payment_hash, bytes):
             payment_hash = payment_hash.hex()
-        return self._hold_invoices.get(payment_hash)
+        return self._hold_invoices.get(payment_hash, None)
 
     def delete_invoice(self, key: Union[bytes, str], write_db: bool = True) -> None:
         if isinstance(key, bytes):
