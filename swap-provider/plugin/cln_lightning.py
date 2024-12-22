@@ -83,7 +83,9 @@ class CLNLightning:
                         if self.check_invoice_expiry(invoice):
                             self._logger.warning(f"monitor_expiries: "
                                                  f"cancelled expired invoice {invoice.payment_hash.hex()}")
-                            break
+                            raise RestartLoop()
+            except RestartLoop:
+                continue
             except Exception:
                 self._logger.error(f"monitor_expiries loop encountered an error:\n{traceback.format_exc()}")
             time.sleep(10)
@@ -500,4 +502,7 @@ class Bolt11InvoiceCreationError(Exception):
     pass
 
 class InvoiceNotFoundError(Exception):
+    pass
+
+class RestartLoop(Exception):
     pass
