@@ -140,7 +140,8 @@ class SwapManager:
         self.swaps = self.db.get_dict('submarine_swaps')  # type: Dict[str, SwapData]
         self._swaps_by_funding_outpoint = {}  # type: Dict[TxOutpoint, SwapData]
         self._swaps_by_lockup_address = {}  # type: Dict[str, SwapData]
-        for payment_hash_hex, swap in self.swaps.items():
+        for payment_hash_hex in list(self.swaps.keys()):
+            swap = self.swaps[payment_hash_hex]
             payment_hash = bytes.fromhex(payment_hash_hex)
             swap._payment_hash = payment_hash_hex
             self._add_or_reindex_swap(swap)
