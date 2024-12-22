@@ -145,7 +145,11 @@ class SwapManager:
             swap._payment_hash = payment_hash_hex
             self._add_or_reindex_swap(swap)
             if not swap.is_reverse and not swap.is_redeemed:
-                self.lnworker.register_hold_invoice_callback(payment_hash=payment_hash, callback=self.hold_invoice_callback)
+                if self.lnworker.get_hold_invoice(payment_hash_hex) is not None:
+                    self.lnworker.register_hold_invoice_callback(payment_hash=payment_hash,
+                                                                 callback=self.hold_invoice_callback)
+                else:  # invoice doesn't exist anymore
+                    self.swaps.pop(payment_hash_hex)
 
         self.prepayments = {}  # type: Dict[bytes, bytes] # fee_rhash -> rhash
         for k, swap in self.swaps.items():
