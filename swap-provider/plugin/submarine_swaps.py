@@ -26,7 +26,7 @@ from .constants import (MIN_LOCKTIME_DELTA, LOCKTIME_DELTA_REFUND, MAX_LOCKTIME_
                        MIN_FINAL_CLTV_DELTA_FOR_CLIENT, CLAIM_FEE_SIZE, LOCKUP_FEE_SIZE,
                         MIN_FINAL_CLTV_DELTA_ACCEPTED, MIN_FINAL_CLTV_DELTA_FOR_INVOICE)
 from .cln_chain import CLNChainWallet
-from .cln_lightning import CLNLightning
+from .cln_lightning import CLNLightning, InvoiceNotFoundError
 from .plugin_config import PluginConfig
 from .cln_logger import PluginLogger
 from .chain_monitor import ChainMonitor
@@ -217,17 +217,20 @@ class SwapManager:
         self.logger.debug(f'trying to pay invoice {key}')
         self.invoices_to_pay[key] = 1000000000000 # lock
         try:
-            invoice = self.lnworker.get_invoice(key)  # use sendpay
+            if (invoice := self.lnworker.get_invoice(key)) is None:
+                raise InvoiceNotFoundError()
             success, log = await self.lnworker.pay_invoice(bolt11=invoice.lightning_invoice, attempts=5)
         except Exception:
             self.logger.error(f'exception paying {key}: {traceback.format_exc()}, will not retry')
-            self.invoices_to_pay.pop(key, None)
-            self.lnworker.delete_invoice(key)
-            self._fail_swap(self.swaps[key], 'exception paying invoice')
+            self._fail_swap(self.swaps.get(key, None), 'exception paying invoice')
             return
         if not success:
-            self.logger.warning(f'failed to pay pending invoice {key}: {log}, will retry in 10 minutes')
-            self.invoices_to_pay[key] = now() + 600
+            if invoice.has_expired():
+                self._fail_swap(self.swaps.get(key, None), f'reverse swap invoice expired, '
+                                                           f'not trying to pay it again: {log}')
+                return
+            self.logger.warning(f'failed to pay pending invoice {key}: {log}, will retry in 1 minute')
+            self.invoices_to_pay[key] = now() + 60
         else:
             self.logger.info(f'paid invoice {key}')
             self.lnworker.delete_invoice(key)
@@ -243,6 +246,8 @@ class SwapManager:
                 await self.taskgroup.spawn(self.pay_pending_ln_invoice(key))
 
     def _fail_swap(self, swap: SwapData, reason: str):
+        if swap is None:
+            return
         self.logger.warning(f'failing swap {swap.payment_hash.hex()}: {reason}')
         if not swap.is_reverse and swap.payment_hash in self.lnworker._hold_invoice_callbacks:
             self.lnworker.unregister_hold_invoice_callback(swap.payment_hash)
@@ -255,6 +260,7 @@ class SwapManager:
                 self.lnworker.delete_payment_info(payment_hash, False)
         else:
             self.lnworker.delete_invoice(swap.payment_hash, False)
+            self.invoices_to_pay.pop(swap.payment_hash.hex(), None)
         self.lnwatcher.remove_callback(swap.lockup_address)
         if swap.funding_txid is None or swap.is_redeemed:
             self.swaps.pop(swap.payment_hash.hex())
