@@ -32,7 +32,13 @@ class PluginConfig:
     def from_cln_and_env(cls, *, cln_plugin_handler: CLNPlugin, logger: PluginLogger) -> 'PluginConfig':
         """Load configuration from .env file or environment variables"""
         load_dotenv()
-        config = PluginConfig(nostr_secret=cln_plugin_handler.derive_secret("NOSTRSECRET"),
+        if nostr_secret_hex := os.getenv("NOSTR_SECRET_HEX"):
+            logger.info(f"Found NOSTR_SECRET_HEX in env. Using it as Nostr secret to publish offers.")
+            nostr_secret = bytes.fromhex(nostr_secret_hex.strip())
+        else:
+            logger.info(f"No NOSTR_SECRET_HEX found in env. Deriving from cln seed.")
+            nostr_secret = cln_plugin_handler.derive_secret("NOSTRSECRET")
+        config = PluginConfig(nostr_secret=nostr_secret,
                             cln_configuration=cln_plugin_handler.fetch_cln_configuration(),
                             logger=logger)
         constants.net = config.network

@@ -508,3 +508,14 @@ class classproperty(property):
 
 def now():
     return int(time.time())
+
+def ignore_exceptions(func):
+    """Decorator to silently swallow all exceptions."""
+    assert asyncio.iscoroutinefunction(func), 'func needs to be a coroutine'
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            pass
+    return wrapper

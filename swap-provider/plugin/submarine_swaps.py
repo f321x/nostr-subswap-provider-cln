@@ -5,6 +5,8 @@ import attr
 import json
 import os
 import math
+import time
+
 from decimal import Decimal
 from typing import Optional, Dict, Tuple, Union
 import electrum_aionostr as aionostr
@@ -15,7 +17,7 @@ from collections import defaultdict
 from .bitcoin import opcodes, dust_threshold, construct_script, script_to_p2wsh, construct_witness
 from .transaction import (PartialTxOutput, PartialTransaction, TxOutpoint, Transaction,
                           OPPushDataGeneric, OPPushDataPubkey, PartialTxInput)
-from .utils import OldTaskGroup, now, BelowDustLimit, TxBroadcastError
+from .utils import OldTaskGroup, now, BelowDustLimit, TxBroadcastError, ignore_exceptions, log_exceptions
 from .bitcoin import DummyAddress
 from .crypto import ripemd, sha256
 from .lnutil import hex_to_bytes, REDEEM_AFTER_DOUBLE_SPENT_DELAY, bytes_to_hex
@@ -161,17 +163,18 @@ class SwapManager:
         self.use_nostr = True  # this plugin only uses nostr comm
         self.is_initialized = asyncio.Event()  # set once nostr is connected to relays
 
-    # @log_exceptions
+    @log_exceptions
     async def run_nostr_server(self):
         while True:
             try:
                 with NostrTransport(config=self.config, sm=self) as transport:
                     await transport.is_connected.wait()
                     self.logger.info(f'nostr is connected')
+                    await transport.publish_offer(self)
                     while True:
                         # todo: publish everytime fees have changed
                         self.server_update_pairs()
-                        await transport.publish_offer(self)
+                        await self.publish_fee_update(self)
                         if not self.is_initialized.is_set():  # if publish offer didn't set initialized we retry faster
                             await asyncio.sleep(10)
                             continue
@@ -291,7 +294,7 @@ class SwapManager:
             self.swaps.pop(swap.payment_hash.hex(), None)
         self.db.write()
 
-    # @log_exceptions
+    @log_exceptions
     async def _claim_swap(self, swap: SwapData) -> None:
         assert self.lnwatcher
         if not await self.lnwatcher.is_up_to_date():
@@ -610,7 +613,7 @@ class SwapManager:
         )
         return tx
 
-#     @log_exceptions
+    @log_exceptions
     def broadcast_funding_tx(self, swap: SwapData, tx: PartialTransaction) -> None:
         swap.funding_txid = tx.txid()
         self.wallet.broadcast_transaction(tx)
@@ -819,8 +822,10 @@ class NostrTransport:  # (Logger):
 
     NOSTR_DM = 4
     NOSTR_SWAP_OFFER = 10943
+    STATUS_NIP38 = 30315
+    FEE_UPDATE_INVERVAL_SEC = 60*10
     NOSTR_EVENT_TIMEOUT = 60*60*24
-    NOSTR_EVENT_VERSION = 1
+    NOSTR_EVENT_VERSION = 2
 
     def __init__(self, *, config, sm):
         self.logger = config.logger
@@ -844,7 +849,7 @@ class NostrTransport:  # (Logger):
     def __exit__(self, ex_type, ex, tb):
         asyncio.create_task(self.stop())  # , self.network.asyncio_loop)
 
-#     @log_exceptions
+    @log_exceptions
     async def main_loop(self):
         assert self.sm.is_server, "This is a CLN plugin and should always run as server"
         self.logger.info(f'starting nostr transport with pubkey: {self.nostr_pubkey}')
@@ -869,31 +874,46 @@ class NostrTransport:  # (Logger):
             except Exception:
                 pass
 
-#     @log_exceptions
-    async def publish_offer(self, sm):
+    @ignore_exceptions
+    @log_exceptions
+    async def publish_offer(self):
         assert self.sm.is_server
         offer = {
             "type": "electrum-swap",
             "version": self.NOSTR_EVENT_VERSION,
             'network': constants.net.NET_NAME,
-            'percentage_fee': sm.percentage,
-            'normal_mining_fee': sm.normal_fee,
-            'reverse_mining_fee': sm.lockup_fee,
-            'claim_mining_fee': sm.claim_fee,
-            'min_amount': sm._min_amount,
-            'max_amount': sm._max_amount,
-            'relays': sm.config.nostr_relays_csv,
+            'relays': self.sm.config.nostr_relays_csv,
         }
-        self.logger.debug(f'published swap offer offer: {offer}')
         event_id = await aionostr._add_event(
             self.relay_manager,
             kind=self.NOSTR_SWAP_OFFER,
             content=json.dumps(offer),
             private_key=self.nostr_private_key)
-        self.logger.debug(f'published swap offer. Nostr event id: {event_id}')
-        sm.is_initialized.set()
+        self.logger.debug(f'published swap offer. Offer: {offer} | Event id: {event_id}')
+        self.sm.is_initialized.set()
 
-#     @log_exceptions
+    async def publish_fee_update(self):
+        assert self.sm.is_server
+        await self.sm.is_initialized.wait()
+        update = {
+            "version": self.NOSTR_EVENT_VERSION,
+            'percentage_fee': self.sm.percentage,
+            'normal_mining_fee': self.sm.normal_fee,
+            'reverse_mining_fee': self.sm.lockup_fee,
+            'claim_mining_fee': self.sm.claim_fee,
+            'min_amount': self.sm._min_amount,
+            'max_amount': self.sm._max_amount,
+        }
+        tags = [['d', 'electrum-swap-fee-update'], ['expiration', str(int(time.time() + self.FEE_UPDATE_INVERVAL_SEC))]]
+        event_id = await aionostr._add_event(
+            self.relay_manager,
+            kind=self.STATUS_NIP38,
+            content=json.dumps(update),
+            tags=tags,
+            private_key=self.nostr_private_key)
+        self.logger.debug(f'published fee update. Update: {update} | Event id: {event_id}')
+
+    @log_exceptions
     async def check_direct_messages(self):
         privkey = aionostr.key.PrivateKey(self.private_key)
         query = {"kinds": [self.NOSTR_DM], "limit":0, "#p": [self.nostr_pubkey]}
@@ -912,7 +932,7 @@ class NostrTransport:  # (Logger):
             else:
                 print('unknown message', content)
 
-    # @log_exceptions
+    @log_exceptions
     async def handle_request(self, request):
         assert self.sm.is_server
         # todo: remember event_id of already processed requests
