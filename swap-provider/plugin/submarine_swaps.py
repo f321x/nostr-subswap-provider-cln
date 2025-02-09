@@ -170,11 +170,10 @@ class SwapManager:
                 with NostrTransport(config=self.config, sm=self) as transport:
                     await transport.is_connected.wait()
                     self.logger.info(f'nostr is connected')
-                    await transport.publish_offer(self)
                     while True:
                         # todo: publish everytime fees have changed
                         self.server_update_pairs()
-                        await self.publish_fee_update(self)
+                        await transport.publish_offer()
                         if not self.is_initialized.is_set():  # if publish offer didn't set initialized we retry faster
                             await asyncio.sleep(10)
                             continue
@@ -821,7 +820,6 @@ class NostrTransport:  # (Logger):
     #     (todo: we should use onion messages for that)
 
     NOSTR_DM = 4
-    NOSTR_SWAP_OFFER = 10943
     STATUS_NIP38 = 30315
     FEE_UPDATE_INVERVAL_SEC = 60*10
     NOSTR_EVENT_TIMEOUT = 60*60*24
@@ -874,37 +872,19 @@ class NostrTransport:  # (Logger):
             except Exception:
                 pass
 
-    @ignore_exceptions
-    @log_exceptions
     async def publish_offer(self):
         assert self.sm.is_server
-        offer = {
-            "type": "electrum-swap",
-            "version": self.NOSTR_EVENT_VERSION,
-            'network': constants.net.NET_NAME,
-            'relays': self.sm.config.nostr_relays_csv,
-        }
-        event_id = await aionostr._add_event(
-            self.relay_manager,
-            kind=self.NOSTR_SWAP_OFFER,
-            content=json.dumps(offer),
-            private_key=self.nostr_private_key)
-        self.logger.debug(f'published swap offer. Offer: {offer} | Event id: {event_id}')
-        self.sm.is_initialized.set()
-
-    async def publish_fee_update(self):
-        assert self.sm.is_server
-        await self.sm.is_initialized.wait()
         update = {
             "version": self.NOSTR_EVENT_VERSION,
-            'percentage_fee': self.sm.percentage,
+            'network': constants.net.NET_NAME,
+            'relays': self.sm.config.nostr_relays_csv,'percentage_fee': self.sm.percentage,
             'normal_mining_fee': self.sm.normal_fee,
             'reverse_mining_fee': self.sm.lockup_fee,
             'claim_mining_fee': self.sm.claim_fee,
             'min_amount': self.sm._min_amount,
             'max_amount': self.sm._max_amount,
         }
-        tags = [['d', 'electrum-swap-fee-update'], ['expiration', str(int(time.time() + self.FEE_UPDATE_INVERVAL_SEC))]]
+        tags = [['d', 'electrum-swap-announcement'], ['expiration', str(int(time.time() + self.FEE_UPDATE_INVERVAL_SEC))]]
         event_id = await aionostr._add_event(
             self.relay_manager,
             kind=self.STATUS_NIP38,
@@ -912,6 +892,7 @@ class NostrTransport:  # (Logger):
             tags=tags,
             private_key=self.nostr_private_key)
         self.logger.debug(f'published fee update. Update: {update} | Event id: {event_id}')
+        self.sm.is_initialized.set()
 
     @log_exceptions
     async def check_direct_messages(self):
